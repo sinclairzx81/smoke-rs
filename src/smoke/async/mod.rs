@@ -26,18 +26,8 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-pub mod action;
 pub mod task;
-pub mod observable;
-pub mod racer;
-pub mod queue;
-pub mod event;
+pub mod stream;
 
-pub use self::action::Action;
-pub use self::action::ActionOnce;
-pub use self::observable::Subject;
-pub use self::observable::Observer;
 pub use self::task::Task;
-pub use self::racer::Racer;
-pub use self::queue::Queue;
-pub use self::event::Event;
+pub use self::stream::Stream;

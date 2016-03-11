@@ -26,100 +26,64 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-use super::action::ActionOnce;
-use std::sync::mpsc::channel;
-use std::thread::JoinHandle;
 use std::thread;
+use std::thread::JoinHandle;
 
-pub struct Task<T, E> {
-	closure: ActionOnce<ActionOnce<Result<T, E>>>
+//---------------------------------------------------------
+// TaskFunc
+//---------------------------------------------------------
+
+trait TaskFunc {
+    type Output;
+    fn call(self: Box<Self>) -> Self::Output;
 }
-impl<T:Send+'static, E:Send+'static> Task<T, E> {
-	
-	#[allow(dead_code)]
-	pub fn new<F>(closure: F) -> Task<T, E> 
-		where F: FnOnce(ActionOnce<Result<T, E>>)+Send+'static {
-		Task {
-			closure: ActionOnce::new(closure)
-		}
-	}
-	
-	#[allow(dead_code)]
-	pub fn then<F, U>(self, closure: F) -> Task<U, E>
-		where F: FnOnce(Result<T, E>) -> U + Send + 'static,
-			    U: Send + 'static {
-		let (sender, receiver) = channel();
-		let sender = sender.clone();
-		self.closure.call(ActionOnce::new(move |result| {
-			sender.send(result).unwrap();
-		}));
-		Task::<U, E>::new(move |resolver| {
-			match receiver.recv() {
-				Ok(result) => resolver.call(Ok(closure(result))), 
-				Err(_)     => panic!()
-			}
-		})
-	}
-	
-	#[allow(dead_code)]
-	pub fn sync(self) -> Result<T, E> {
-		let (sender, receiver) = channel();
-		let sender = sender.clone();
-		self.closure.call(ActionOnce::new(move |result| 
-			sender.send(result).unwrap()
-		)); receiver.recv().unwrap()
-	}
-	
-	#[allow(dead_code)]
-	pub fn async(self) -> JoinHandle<Result<T, E>> {
-		thread::spawn(move || self.sync())
-	}
-	
-	#[allow(dead_code)]
-	pub fn race(tasks: Vec<Task<T, E>>)  -> Task<T, E> {
-		Task::new(move |resolver| {
-			let (sender, receiver) = channel();
-			let len = tasks.len();
-			for task in tasks {
-				let sender = sender.clone();
-				let _ = task.then(move |result| {
-					sender.send(result).unwrap();
-				}).async();
-			}
-			match receiver.recv() {
-				Ok(result) => resolver.call(result), 
-				Err(_)     => panic!()
-			};
-			for _ in (0..len-1) {
-				let _ = receiver.recv().unwrap();
-			}
-		})
-	}
-	
-	#[allow(dead_code)]
-	pub fn series(tasks: Vec<Task<T, E>>) -> Task<Vec<T>, E> {
-		Task::new(move |resolver| {
-			let results:Vec<_> = 
-				tasks.into_iter()
-				.map(|task| task.sync())
-				.collect();
-			resolver.call(results
-				.into_iter()
-				.collect());
-		})
-	}
-	
-	#[allow(dead_code)]
-	pub fn parallel(tasks: Vec<Task<T, E>>) -> Task<Vec<T>, E> {
-		Task::new(move |resolver| {
-			let results:Vec<_> = 
-				tasks.into_iter()
-				.map(|task| task.async())
-				.map(|handle| handle.join().unwrap())
-				.collect();
-			resolver.call(results
-				.into_iter()
-				.collect());
-		})
-	}
+impl<R, F: FnOnce() -> R> TaskFunc for F {
+    type Output = R;
+    fn call(self: Box<Self>) -> R {
+        self()
+    }
+}
+
+//---------------------------------------------------------
+// Task<T, E> 
+//---------------------------------------------------------
+pub struct Task<T, E> {
+    func: Box<TaskFunc<Output = Result<T, E>> + Send + 'static>
+}
+
+impl <T, E> Task<T, E> {
+    pub fn new<F>(func: F) -> Task<T, E>
+        where F: FnOnce() -> Result<T, E> + Send + 'static {
+        Task {
+            func: Box::new(func)
+        }
+    }
+    
+    pub fn sync(self) -> Result<T, E> {
+        self.func.call()
+    }
+}
+
+//---------------------------------------------------------
+// Task<T, E> for Send + 'static
+//---------------------------------------------------------
+impl<T, E> Task<T, E> where T: Send + 'static,
+                            E: Send + 'static {
+                                
+    pub fn all(tasks: Vec<Task<T, E>>) -> Task<Vec<T>, E> {
+        Task::<Vec<T>, E>::new(|| {
+            tasks.into_iter()
+                 .map(|task| thread::spawn(|| task.sync() ) )
+                 .collect::<Vec<_>>()
+                 .into_iter()
+                 .map(|handle| handle.join().unwrap())
+                 .collect()
+        })
+    }
+    
+    pub fn async<F, U>(self, closure: F) -> JoinHandle<U>
+        where F: FnOnce(Result<T, E>) -> U + Send + 'static,
+              U: Send + 'static {
+        thread::spawn(move || closure(self.sync()))
+    }
 }
