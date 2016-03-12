@@ -29,6 +29,7 @@ THE SOFTWARE.
 use std::thread;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver, SendError};
+use super::task::Task;
 
 //---------------------------------------------------------
 // SenderFunc<T> -> TResult 
@@ -82,6 +83,20 @@ impl <T> Stream<T> where T: Send + 'static {
     }
     
     //---------------------------------------------------------
+    // reduces this stream to a single value.
+    //---------------------------------------------------------
+    #[allow(dead_code)]   
+    pub fn reduce<F>(self, func:F, value: T) -> Task<T, ()>
+        where F: Fn(T, T) -> T + Send + 'static {
+        Task::new(move || {
+            let mut accumulator = value;
+            for value in self.recv() {
+                accumulator = func(accumulator, value)
+            } Ok(accumulator)
+        })
+    }
+    
+    //---------------------------------------------------------
     // filters stream
     //---------------------------------------------------------
     #[allow(dead_code)]   
@@ -97,10 +112,10 @@ impl <T> Stream<T> where T: Send + 'static {
     }
     
     //---------------------------------------------------------
-    // merges streams into a single stream.
+    // mux streams into a single stream.
     //---------------------------------------------------------
     #[allow(dead_code)]   
-    pub fn merge(streams: Vec<Stream<T>>) -> Stream<T> {
+    pub fn mux(streams: Vec<Stream<T>>) -> Stream<T> {
         Stream::new(move |sender| {
             // Stream<T> -> JoinHandle<T>
             let handles = streams.into_iter().map(move |stream| {
