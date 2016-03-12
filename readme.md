@@ -1,11 +1,10 @@
 #smoke-rs
 
-Asynchronous primitives for the Rust programming language.
+Concurrency primitives for the Rust programming language.
 
 ## overview
 
-This library provides two async primitives to help orchestrate concurrent and parallel programming
-scenarios in the Rust language.
+This library provides task / stream primitives to help orchestrate concurrency in Rust.  
 
 * [Task&lt;T, E&gt;](#task)
   * [Creating tasks](#creating_tasks)
@@ -20,12 +19,12 @@ scenarios in the Rust language.
 <a name='task' />
 ## Task&lt;T, E&gt;
 
-A task encapsulates a single operation and provides a means to run that operation 
+A Task encapsulates a single operation and provides a means to run that operation 
 synchronously or asynchronously. A task achieves this by providing the caller a .sync() 
 or .async() method which the caller can use to resolve a std::Result&lt;T, E&gt;.
 
 <a name='creating_tasks' />
-### creating tasks
+### Creating Tasks
 
 The following will create a task. It is important to note that a task
 will not execute immediately and the caller is expected to call .sync() or .async()
@@ -44,7 +43,7 @@ fn main() {
 ```
 
 <a name='run_task_synchronously' />
-### run task synchronously
+### Run task synchronously
 
 The following creates a task which resolves a Result<&lt;i32, i32&gt; and executes it synchronously.
 
@@ -64,7 +63,7 @@ fn main() {
 ```
 
 <a name='run_task_asynchronously' />
-### run task asynchronously
+### Run task asynchronously
 
 The following creates a task which resolves a Result&lt;i32, i32&gt; and executes it asynchronously. 
 
@@ -90,7 +89,7 @@ fn main() {
 ```
 
 <a name='run_tasks_in_parallel' />
-### run tasks in parallel
+### Run tasks in parallel
 
 Tasks can be run in parallel by calling Task::all(). The all() method wraps the inner tasks in a outer task
 that the caller can use to obtain the results. In this regard, a vector of Task&lt;T, E&gt; will map to a new
@@ -127,7 +126,7 @@ which a caller may listen to. Internally, Stream&lt;T&gt; abstracts
 mpsc channels and provides some composability methods to aid in data flow.
 
 <a name='creating_stream' />
-## creating streams
+## Creating Streams
 
 The following creates a simple sequence of numbers. The caller
 calls .recv() to start the receiving items from the stream. Internally
@@ -156,7 +155,7 @@ fn main() {
 }
 ```
 <a name='merge_streams' />
-## merge streams
+## Merge Streams
 
 Streams of the same type can be merged. The following creates two distinct streams 
 and merges them into one.
@@ -208,7 +207,7 @@ fn main() {
 }
 ```
 <a name='filtering_and_mapping_streams' />
-## filtering and mapping streams.
+## Filtering and mapping streams.
 
 Streams can be mapped and filtered.
 
