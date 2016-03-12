@@ -54,7 +54,8 @@ impl <T> Stream<T> {
     
     //---------------------------------------------------------
     // creates a new Stream<T>
-    //---------------------------------------------------------    
+    //---------------------------------------------------------
+    #[allow(dead_code)]    
     pub fn new<F>(func:F) -> Stream<T>
         where F: FnOnce(Sender<T>) -> Result<(), SendError<T>> + Send + 'static {
         Stream {
@@ -70,6 +71,7 @@ impl <T> Stream<T> where T: Send + 'static {
     //---------------------------------------------------------
     // maps stream to another stream.
     //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn map<F, U>(self, func:F) -> Stream<U>
         where F: Fn(T) -> U + Send + 'static {
         Stream::new(move |sender| {
@@ -82,6 +84,7 @@ impl <T> Stream<T> where T: Send + 'static {
     //---------------------------------------------------------
     // filters stream
     //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn filter<F>(self, func:F) -> Stream<T>
         where F: Fn(&T) -> bool + Send + 'static {
         Stream::new(move |sender| {
@@ -96,6 +99,7 @@ impl <T> Stream<T> where T: Send + 'static {
     //---------------------------------------------------------
     // merges streams into a single stream.
     //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn merge(streams: Vec<Stream<T>>) -> Stream<T> {
         Stream::new(move |sender| {
             // Stream<T> -> JoinHandle<T>
@@ -113,7 +117,7 @@ impl <T> Stream<T> where T: Send + 'static {
               
              // process handles
              match handles {
-                 Err(error) => panic!("thread paniced"),
+                 Err(_) => panic!("thread paniced"),
                  Ok(send_results) => {
                       // process send results..
                      let results = 
@@ -132,6 +136,7 @@ impl <T> Stream<T> where T: Send + 'static {
     //---------------------------------------------------------
     // syncs this stream, returns a Receiver<T>
     //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn recv(self) -> Receiver<T> {
         let (sender, receiver) = channel();
         thread::spawn(move || self.func.call(sender)); 

@@ -52,13 +52,20 @@ pub struct Task<T, E> {
 }
 
 impl <T, E> Task<T, E> {
+    //---------------------------------------------------------
+    // creates a new task.
+    //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn new<F>(func: F) -> Task<T, E>
         where F: FnOnce() -> Result<T, E> + Send + 'static {
         Task {
             func: Box::new(func)
         }
     }
-    
+    //---------------------------------------------------------
+    // runs this task synchronously.
+    //---------------------------------------------------------
+    #[allow(dead_code)]   
     pub fn sync(self) -> Result<T, E> {
         self.func.call()
     }
@@ -69,7 +76,11 @@ impl <T, E> Task<T, E> {
 //---------------------------------------------------------
 impl<T, E> Task<T, E> where T: Send + 'static,
                             E: Send + 'static {
-                                
+                              
+    //---------------------------------------------------------
+    // executes the given tasks in parallel.
+    //---------------------------------------------------------  
+    #[allow(dead_code)]            
     pub fn all(tasks: Vec<Task<T, E>>) -> Task<Vec<T>, E> {
         Task::<Vec<T>, E>::new(|| {
             tasks.into_iter()
@@ -81,6 +92,10 @@ impl<T, E> Task<T, E> where T: Send + 'static,
         })
     }
     
+    //---------------------------------------------------------
+    // executes this task asynchronously.
+    //--------------------------------------------------------- 
+    #[allow(dead_code)] 
     pub fn async<F, U>(self, closure: F) -> JoinHandle<U>
         where F: FnOnce(Result<T, E>) -> U + Send + 'static,
               U: Send + 'static {
