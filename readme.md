@@ -124,33 +124,60 @@ fn main() {
 
 Stream&lt;T&gt; provides a means to generate async sequences from 
 which a caller may listen to. Internally, Stream&lt;T&gt; abstracts 
-mpsc channels and provides some composability methods to aid in data flow.
+mpsc channels and provides some composability methods to aid in data 
+flow.
 
-<a name='creating_stream'></a>
+
+<a name='creating_streams'></a>
 ## Creating Streams
 
-The following creates a simple sequence of numbers. The caller
-calls .recv() to start the receiving items from the stream. Internally
-the stream is executed within its own thread.
+The following creates a simple sequence of numbers. 
 
 ```rust
 mod smoke;
 use smoke::async::Stream;
-use std::thread;
-use std::time::Duration;
 
-// create a stream of numbers..
+fn main() {
+  let stream = Stream::new(|sender| {
+      println!("inside stream");
+      try! (sender.send(1) );
+      try! (sender.send(2) );
+      try! (sender.send(3) );
+      try! (sender.send(4) );
+      Ok(())
+  });
+}
+```
+
+<a name='reading_streams'></a>
+## Reading Streams
+
+The following creates a simple sequence of numbers and reads from it. It is 
+important to note, the stream will only begin reading once the caller
+calls .recv() on the stream. Until such time, the stream can be considered
+in a pending state.
+
+```rust
+mod smoke;
+use smoke::async::Stream;
+
 fn numbers() -> Stream<i32> {
-  Stream::new(|sender| {
-      (0..10).map(|n| {
-        thread::sleep(Duration::from_secs(1));
-        sender.send(n)
-      }).last().unwrap()
-  }) 
+    Stream::new(|sender| {
+      println!("inside stream");
+      try! (sender.send(1) );
+      try! (sender.send(2) );
+      try! (sender.send(3) );
+      try! (sender.send(4) );
+      Ok(())
+    })
 }
 
 fn main() {
-  for n in numbers().recv() {
+  // create stream.
+  let stream = numbers();
+  
+  // reading starts here.
+  for n in stream.recv() {
       println!("{}", n);
   }
 }
@@ -166,12 +193,13 @@ a stream before reading begins on the stream.
 mod smoke;
 use smoke::async::Stream;
 
-// create a stream of numbers..
 fn numbers() -> Stream<i32> {
   Stream::new(|sender| {
-      (0..10).map(|n| sender.send(n))
-             .last()
-             .unwrap()
+      try! (sender.send(1) );
+      try! (sender.send(2) );
+      try! (sender.send(3) );
+      try! (sender.send(4) );
+      Ok(())
   }) 
 }
 
@@ -182,8 +210,7 @@ fn main() {
       stream.filter(|n| n % 2 == 0)   // Stream<T> -> Stream<T>
             .map   (|n| n * 2)        // Stream<T> -> Stream<U>
             .reduce(|p, c| p + c, 0); // Stream<U> -> Task<U>
-   
-   // yeild result              
+              
    println!("{}", task.sync().unwrap());
 }
 ```
@@ -196,11 +223,8 @@ distinct streams (numbers and words), merges them into a single stream followed 
 them in the for loop.
 
 ```rust
-
 mod smoke;
 use smoke::async::Stream;
-use std::thread;
-use std::time::Duration;
 
 #[derive(Debug)]
 enum Foo {
@@ -208,25 +232,23 @@ enum Foo {
   Word(&'static str)
 }
 
-// a stream of numbers.
 fn numbers() -> Stream<Foo> {
   Stream::new(|sender| {
-      (0..10).map(|n| {
-          thread::sleep(Duration::from_secs(1));
-          sender.send(Foo::Number(n))
-      }).last().unwrap()
+    try! (sender.send(Foo::Number(1)) );
+    try! (sender.send(Foo::Number(2)) );
+    try! (sender.send(Foo::Number(3)) );
+    try! (sender.send(Foo::Number(4)) );
+    Ok(())
   }) 
 }
 
-// a stream of words.
 fn words() -> Stream<Foo> {
   Stream::new(|sender| {
       "the quick brown fox jumps over the lazy dog"
         .split(" ")
-        .map(|n| {
-          thread::sleep(Duration::from_secs(1));
-          sender.send(Foo::Word(n))
-      }).last().unwrap()
+        .map(|n| sender.send(Foo::Word(n)))
+        .last()
+        .unwrap()
   }) 
 }
 
