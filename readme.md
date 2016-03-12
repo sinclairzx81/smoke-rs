@@ -231,8 +231,8 @@ fn main() {
 <a name='mux_demux_streams'></a>
 ## Mux / Demux streams
 
-Multiple of the same type can be merged into a single stream. The following creates two 
-distinct streams (numbers and words), merges them into a stream and reads.
+Multiple streams of the same type can be merged into a single stream. The following creates two 
+distinct streams (numbers and words), merges them into a single stream and reads.
 
 ```rust
 mod smoke;
