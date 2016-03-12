@@ -14,7 +14,7 @@ This library provides task / stream primitives to help orchestrate concurrency i
 * [Stream&lt;T&gt;](#stream)
   * [Creating streams](#creating_streams)
   * [Reading streams](#reading_streams)
-  * [Map / reduce streams](#map_reduce_streams)
+  * [Map / Reduce streams](#map_reduce_streams)
   * [Mux / Demux streams](#mux_demux_streams)
 
 <a name='task'></a>
@@ -157,7 +157,7 @@ fn main() {
 ```
 
 <a name='map_reduce_streams'></a>
-## Map / reduce streams
+## Map / Reduce streams
 
 Streams support filter, map and reduce operators. These operators can be applied to
 a stream before reading begins on the stream. 
