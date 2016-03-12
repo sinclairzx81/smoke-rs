@@ -14,7 +14,6 @@ This library provides task / stream primitives to help orchestrate concurrency i
 * [Stream&lt;T&gt;](#stream)
   * [Creating streams](#creating_streams)
   * [Reading streams](#reading_streams)
-  * [Map / Reduce streams](#map_reduce_streams)
   * [Mux / Demux streams](#mux_demux_streams)
 
 <a name='task'></a>
@@ -58,7 +57,6 @@ fn main() {
         Ok(123)
     });
     
-    // run task synchronously. 
     let number = task.sync().unwrap();
 }
 ```
@@ -110,7 +108,6 @@ fn add(a: i32, b: i32) -> Task<i32, ()> {
 }
 
 fn main() {
-   // run in parallel.
    let result = Task::all(vec![
      add(10, 20),
      add(20, 30),
@@ -152,10 +149,10 @@ fn main() {
 <a name='reading_streams'></a>
 ## Reading Streams
 
-The following creates a simple sequence of numbers and reads from it. It is 
-important to note, the stream will only begin reading once the caller
-calls .recv() on the stream. Until such time, the stream can be considered
-in a pending state.
+A stream can be read with the streams .sync() and .async() functions. Internally,
+.sync() and .async() functions map to mpsc SyncSender and Sender respectively. 
+
+Consider the following stream.
 
 ```rust
 mod smoke;
@@ -163,90 +160,105 @@ use smoke::async::Stream;
 
 fn numbers() -> Stream<i32> {
     Stream::new(|sender| {
-      println!("inside stream");
-      try! (sender.send(1) );
-      try! (sender.send(2) );
-      try! (sender.send(3) );
-      try! (sender.send(4) );
+      for n in 0..5 {
+          try! ( sender.send(n) );
+          println!("sent: {}", n);
+      }
       Ok(())
     })
 }
-
-fn main() {
-  // create stream.
-  let stream = numbers();
-  
-  // reading starts here.
-  for n in stream.recv() {
-      println!("{}", n);
-  }
-}
 ```
 
-<a name='map_reduce_streams'></a>
-## Map / Reduce streams
-
-Streams support filter, map and reduce operators. These operators can be applied to
-a stream before reading begins on the stream. 
+The code below will call the stream with .async(). This will start reading the entire stream from
+start to finish. Because the reader is sleeping the thread (emulating some contention), the .async()
+function will internally buffer streamed data until the reader gets around to reading it.
 
 ```rust
-mod smoke;
-use smoke::async::Stream;
-
-fn numbers() -> Stream<i32> {
-  Stream::new(|sender| {
-      try! (sender.send(1) );
-      try! (sender.send(2) );
-      try! (sender.send(3) );
-      try! (sender.send(4) );
-      Ok(())
-  }) 
-}
+use std::thread;
+use std::time::Duration;
 
 fn main() {
-  let stream = numbers();
-  
-  let task = 
-      stream.filter(|n| n % 2 == 0)   // Stream<T> -> Stream<T>
-            .map   (|n| n * 2)        // Stream<T> -> Stream<U>
-            .reduce(|p, c| p + c, 0); // Stream<U> -> Task<U>
-              
-   println!("{}", task.sync().unwrap());
+  for n in numbers().async() {
+      thread::sleep(Duration::from_secs(1));
+      println!("recv: {}", n);
+  }
 }
+
+// output:
+// sent: 0
+// sent: 1
+// sent: 2
+// sent: 3
+// sent: 4
+// recv: 0
+// recv: 1
+// recv: 2
+// recv: 3
+// recv: 4
+```
+
+Often, buffering is not desirable instances where the stream may produce large amounts of data (for example, streaming
+data from a large file). In these instances, callers can use the .sync(bound) function. Unlike the .async() function which
+will buffer infinately, .sync(bound) will buffer items up to the specified bound. If the bound is exceeded, the streams sender
+will block.
+
+With this, callers can read in lock-stop with the stream.
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+  for n in numbers().sync(0) {
+      thread::sleep(Duration::from_secs(1));
+      println!("sent: {}", n);
+  }
+}
+
+// output:
+// sent: 0
+// recv: 0
+// sent: 1
+// recv: 1
+// sent: 2
+// recv: 2
+// sent: 3
+// recv: 3
+// sent: 4
+// recv: 4
 ```
 
 <a name='mux_demux_streams'></a>
 ## Mux / Demux streams
 
 Multiple of the same type can be merged into a single stream. The following creates two 
-distinct streams (numbers and words), merges them into a single stream followed by seperating
-them in the for loop.
+distinct streams (numbers and words), merges them into a stream and reads.
 
 ```rust
 mod smoke;
 use smoke::async::Stream;
 
 #[derive(Debug)]
-enum Foo {
+enum Item {
   Number(i32),
   Word(&'static str)
 }
 
-fn numbers() -> Stream<Foo> {
+fn numbers() -> Stream<Item> {
   Stream::new(|sender| {
-    try! (sender.send(Foo::Number(1)) );
-    try! (sender.send(Foo::Number(2)) );
-    try! (sender.send(Foo::Number(3)) );
-    try! (sender.send(Foo::Number(4)) );
+    try! (sender.send(Item::Number(1)) );
+    try! (sender.send(Item::Number(2)) );
+    try! (sender.send(Item::Number(3)) );
+    try! (sender.send(Item::Number(4)) );
     Ok(())
   }) 
 }
 
-fn words() -> Stream<Foo> {
+fn words() -> Stream<Item> {
   Stream::new(|sender| {
       "the quick brown fox jumps over the lazy dog"
         .split(" ")
-        .map(|n| sender.send(Foo::Word(n)))
+        .map(|n| sender.send(Item::Word(n)))
         .last()
         .unwrap()
   }) 
@@ -254,19 +266,16 @@ fn words() -> Stream<Foo> {
 
 fn main() {
   // mux
-  let stream = Stream::mux(vec![
-      numbers(), 
-      words()
-      ]);
-  
+  let stream = Stream::all(vec![
+    numbers(),
+    words()
+  ]);
   // demux
-  for foo in stream.recv() {
-      match foo {
-        Foo::Number(n) => 
-          println!("number -> {}", n),
-        Foo::Word(n) => 
-          println!("word -> {}", n)
-      }
+  for item in stream.sync(0) {
+    match item {
+      Item::Word(word)     => println!("word: {:?}", word),
+      Item::Number(number) => println!("number: {:?}", number)
+    }
   }
 }
 ```

@@ -27,101 +27,79 @@ THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
 use std::thread;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{Sender, Receiver, SendError};
-use super::task::Task;
+use std::sync::mpsc::{SendError};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{Receiver};
 
-//---------------------------------------------------------
-// SenderFunc<T> -> TResult 
-//---------------------------------------------------------
-trait SenderFunc<T> {
+//-------------------------------------------
+// StreamFunc<T> 
+//-------------------------------------------
+trait StreamFunc<T> {
     type Output;
     fn call(self: Box<Self>, arg: T) -> Self::Output;
 }
-impl<T, TResult, F: FnOnce(T) -> TResult> SenderFunc<T> for F {
+impl<T, TResult, F: FnOnce(T) -> TResult> StreamFunc<T> for F {
     type Output = TResult;
     fn call(self: Box<Self>, value: T) -> TResult {
         self(value)
     }
 }
-
-//---------------------------------------------------------
-// Stream<T>
-//---------------------------------------------------------
-pub struct Stream<T> {
-    func: Box <SenderFunc<Sender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
+//-------------------------------------------
+// StreamSender<T> 
+//-------------------------------------------
+enum SenderOption<T> {
+  Sync  (SyncSender<T>),
+  Async (Sender<T>)
 }
-impl <T> Stream<T> {
-    
-    //---------------------------------------------------------
-    // creates a new Stream<T>
-    //---------------------------------------------------------
-    #[allow(dead_code)]    
+pub struct StreamSender<T> {
+  option: SenderOption<T>
+}
+impl<T> StreamSender<T> where T: Send + 'static {
+  fn async(sender: Sender<T>) -> StreamSender<T> {
+    StreamSender { option: SenderOption::Async(sender) }
+  }
+  fn sync(sender: SyncSender<T>) -> StreamSender<T> {
+    StreamSender { option: SenderOption::Sync(sender) }
+  }
+  pub fn send(&self, value:T) -> Result<(), SendError<T>> {
+    match self.option {
+      SenderOption::Async(ref sender) 
+        => sender.send(value),
+      SenderOption::Sync (ref sender)  
+        => sender.send(value)
+    }
+  }
+}
+impl<T> Clone for StreamSender<T> {
+  fn clone(&self) -> StreamSender<T> {
+    match self.option {
+      SenderOption::Async(ref sender) 
+        => StreamSender { option: SenderOption::Async(sender.clone()) },
+      SenderOption::Sync (ref sender) 
+        => StreamSender { option: SenderOption::Sync (sender.clone()) }
+    }
+  }
+}
+//-------------------------------------------
+// Stream<T> 
+//-------------------------------------------
+pub struct Stream<T>  {
+  func: Box<StreamFunc<StreamSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
+}
+impl<T> Stream<T> where T: Send + 'static {
     pub fn new<F>(func:F) -> Stream<T>
-        where F: FnOnce(Sender<T>) -> Result<(), SendError<T>> + Send + 'static {
+        where F: FnOnce(StreamSender<T>) -> Result<(), SendError<T>> + Send + 'static {
         Stream {
-            func: Box::new(func)   
+            func: Box::new(func)
         }
     }
-}
-//------------------------------
-// Stream<T> for Send + 'static
-//------------------------------
-impl <T> Stream<T> where T: Send + 'static {
-    
-    //---------------------------------------------------------
-    // maps stream to another stream.
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn map<F, U>(self, func:F) -> Stream<U>
-        where F: Fn(T) -> U + Send + 'static {
+    pub fn all(streams: Vec<Stream<T>>) -> Stream<T> {
         Stream::new(move |sender| {
-            for value in self.recv() {
-                try!(sender.send(func(value)));
-            } Ok(())
-        })
-    }
-    
-    //---------------------------------------------------------
-    // reduces this stream to a single value.
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn reduce<F>(self, func:F, value: T) -> Task<T, ()>
-        where F: Fn(T, T) -> T + Send + 'static {
-        Task::new(move || {
-            let mut accumulator = value;
-            for value in self.recv() {
-                accumulator = func(accumulator, value)
-            } Ok(accumulator)
-        })
-    }
-    
-    //---------------------------------------------------------
-    // filters stream
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn filter<F>(self, func:F) -> Stream<T>
-        where F: Fn(&T) -> bool + Send + 'static {
-        Stream::new(move |sender| {
-            for value in self.recv() {
-                if func(&value) {
-                    try!(sender.send(value));
-                }
-            } Ok(())
-        })
-    }
-    
-    //---------------------------------------------------------
-    // mux streams into a single stream.
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn mux(streams: Vec<Stream<T>>) -> Stream<T> {
-        Stream::new(move |sender| {
-            // Stream<T> -> JoinHandle<T>
             let handles = streams.into_iter().map(move |stream| {
                 let sender = sender.clone();
                 thread::spawn::<_, Result<(), SendError<T>>>(move || {
-                    for value in stream.recv() {
+                    for value in stream.sync(0) {
                         try!(sender.send(value));
                     } Ok(())
                 })
@@ -129,12 +107,9 @@ impl <T> Stream<T> where T: Send + 'static {
               .into_iter()
               .map(|handle| handle.join())
               .collect::<Result<Vec<_>, _>>();
-              
-             // process handles
              match handles {
                  Err(_) => panic!("thread paniced"),
                  Ok(send_results) => {
-                      // process send results..
                      let results = 
                         send_results
                             .into_iter()
@@ -147,14 +122,25 @@ impl <T> Stream<T> where T: Send + 'static {
              }
         })
     }
-    
-    //---------------------------------------------------------
-    // syncs this stream, returns a Receiver<T>
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn recv(self) -> Receiver<T> {
-        let (sender, receiver) = channel();
-        thread::spawn(move || self.func.call(sender)); 
-        receiver
-    }  
 }
+impl<T> Stream<T> where T: Send + 'static {
+   
+    pub fn sync(self, bound: usize) -> Receiver<T> {
+        let (sender, receiver) = sync_channel(bound);
+        thread::spawn(move || {
+          let emit = StreamSender::sync(sender);
+          self.func.call(emit).unwrap();
+          });
+        receiver
+    }
+    
+    pub fn async(self) -> Receiver<T> {
+        let (sender, receiver) = channel();
+        thread::spawn(move || {
+            let emit = StreamSender::async(sender);
+            self.func.call(emit).unwrap();
+          });
+        receiver
+    }
+}
+
