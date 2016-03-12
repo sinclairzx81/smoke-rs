@@ -8,21 +8,23 @@ This library provides two async primitives to help orchestrate concurrent and pa
 scenarios in the Rust language.
 
 * [Task&lt;T, E&gt;](#task)
-  * [creating tasks](#creating_tasks)
-  * [run task synchronously](#run_task_synchronously)
-  * [run task asynchronously](#run_task_asynchronously)
-  * [run tasks in parallel](#run_tasks_in_parallel)
+  * [Creating tasks](#creating_tasks)
+  * [Run task synchronously](#run_task_synchronously)
+  * [Run task asynchronously](#run_task_asynchronously)
+  * [Run tasks in parallel](#run_tasks_in_parallel)
 * [Stream&lt;T&gt;](#stream)
-	* [creating streams](#creating_streams)
-	* [merge streams](#merge_streams)
-	* [filtering and mapping streams](#filtering_and_mapping_streams)
+	* [Creating streams](#creating_streams)
+	* [Merge streams](#merge_streams)
+	* [Filtering and mapping streams](#filtering_and_mapping_streams)
 
+<a name='task' />
 ## Task&lt;T, E&gt;
 
 A task encapsulates a single operation and provides a means to run that operation 
 synchronously or asynchronously. A task achieves this by providing the caller a .sync() 
 or .async() method which the caller can use to resolve a std::Result&lt;T, E&gt;.
 
+<a name='creating_tasks' />
 ### creating tasks
 
 The following will create a task. It is important to note that a task
@@ -41,6 +43,7 @@ fn main() {
 }
 ```
 
+<a name='run_task_synchronously' />
 ### run task synchronously
 
 The following creates a task which resolves a Result<&lt;i32, i32&gt; and executes it synchronously.
@@ -60,6 +63,7 @@ fn main() {
 }
 ```
 
+<a name='run_task_asynchronously' />
 ### run task asynchronously
 
 The following creates a task which resolves a Result&lt;i32, i32&gt; and executes it asynchronously. 
@@ -85,6 +89,7 @@ fn main() {
 }
 ```
 
+<a name='run_tasks_in_parallel' />
 ### run tasks in parallel
 
 Tasks can be run in parallel by calling Task::all(). The all() method wraps the inner tasks in a outer task
@@ -113,12 +118,15 @@ fn main() {
    ]).sync().unwrap(); // [30, 50, 70]
 }
 ```
+
+<a name='stream' />
 ## Stream&lt;T&gt;
 
 Stream&lt;T&gt; provides a means to generate async sequences from 
 which a caller may listen to. Internally, Stream&lt;T&gt; abstracts 
 mpsc channels and provides some composability methods to aid in data flow.
 
+<a name='creating_stream' />
 ## creating streams
 
 The following creates a simple sequence of numbers. The caller
@@ -147,7 +155,7 @@ fn main() {
   }
 }
 ```
-
+<a name='merge_streams' />
 ## merge streams
 
 Streams of the same type can be merged. The following creates two distinct streams 
@@ -199,7 +207,7 @@ fn main() {
   }
 }
 ```
-
+<a name='filtering_and_mapping_streams' />
 ## filtering and mapping streams.
 
 Streams can be mapped and filtered.
