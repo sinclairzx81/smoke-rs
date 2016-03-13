@@ -96,9 +96,17 @@ impl<T, E> Task<T, E> where T: Send + 'static,
     // executes this task asynchronously.
     //--------------------------------------------------------- 
     #[allow(dead_code)] 
-    pub fn async<F, U>(self, closure: F) -> JoinHandle<U>
-        where F: FnOnce(Result<T, E>) -> U + Send + 'static,
-              U: Send + 'static {
-        thread::spawn(move || closure(self.sync()))
+    pub fn async(self) -> JoinHandle<Result<T, E>> {
+        thread::spawn(move || self.sync())
     }
+    
+    //---------------------------------------------------------
+    // executes this task asynchronously.
+    //--------------------------------------------------------- 
+    #[allow(dead_code)] 
+    pub fn async_then<F, U>(self, closure: F) -> JoinHandle<U>
+        where U: Send + 'static,
+              F: FnOnce(Result<T, E>) -> U + Send + 'static {
+        thread::spawn(move || closure(self.sync()))
+    }    
 }

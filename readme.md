@@ -65,11 +65,9 @@ fn main() {
 <a name='run_task_asynchronously'></a>
 ### Run task asynchronously
 
-The following creates a task which resolves a Result&lt;i32, i32&gt; and executes it asynchronously. 
-
-When running the task with .async(), the body of the task is executed within a thread, in which the
-result is pushed into the methods closure. In addition, the .async() method returns a JoinHandle for
-which the caller can use to join() the thread back to the caller.
+The following creates a task which resolves a Result&lt;i32, i32&gt; and executes it asynchronously. Internally,
+the task will be executed within a new thread. .async() returns a JoinHandle&lt;Result&lt;i32, i32&gt;&gt; a caller
+can .join() later to obtain the result later.
 
 ```rust
 mod smoke;
@@ -81,10 +79,27 @@ fn main() {
         Ok(123)
     });
     
-    task.async(|result| {
-       let number = result.unwrap();
-       // ...
-    }).join();
+    let handle = task.async();
+    // ...
+    let result = handle.join().unwrap();
+}
+```
+optionally, the result can be obtained on a continuation. 
+```
+fn main() {
+    let task = Task::<i32, i32>::new(|| {
+        println!("inside the task");
+        Ok(123)
+    });
+    
+    let handle = task.async_then(|result| {
+      println!("result: {}", result.unwrap());
+      
+      // optionally return
+    });
+    
+    // ... do other work.
+    let _ = handle.join().unwrap();
 }
 ```
 
@@ -113,7 +128,10 @@ fn main() {
      add(10, 20),
      add(20, 30),
      add(30, 40)
-   ]).sync().unwrap(); // [30, 50, 70]
+   ]).sync().unwrap(); 
+   
+   // [30, 50, 70]
+   println!("{:?}", result); 
 }
 ```
 
@@ -285,8 +303,8 @@ fn main() {
 ## Mapping streams
 
 Sometimes, it may be desirable to map one stream to another stream. Streams provide a .map() function
-a caller can use to map a stream into another stream. The following example builds on the merge example, mapping
-different streams into a unified type.
+a caller can use to map one stream into another. The following example builds on the merge example, mapping
+different streams into a unified type. Useful for integration.
 
 ```rust
 mod smoke;
