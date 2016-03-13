@@ -14,7 +14,8 @@ This library provides task / stream primitives to help orchestrate concurrency i
 * [Stream&lt;T&gt;](#stream)
   * [Creating streams](#creating_streams)
   * [Reading streams](#reading_streams)
-  * [Mux / Demux streams](#mux_demux_streams)
+  * [Merging streams](#merging_streams)
+  * [Mapping streams](#mapping_streams)
 
 <a name='task'></a>
 ## Task&lt;T, E&gt;
@@ -228,8 +229,8 @@ fn main() {
 // recv: 4
 ```
 
-<a name='mux_demux_streams'></a>
-## Mux / Demux streams
+<a name='merging_streams'></a>
+## Merging streams
 
 Multiple streams of the same type can be merged into a single stream. The following creates two 
 distinct streams (numbers and words), merges them into a single stream and reads.
@@ -269,6 +270,60 @@ fn main() {
   let stream = Stream::all(vec![
     numbers(),
     words()
+  ]);
+  // demux
+  for item in stream.sync(0) {
+    match item {
+      Item::Word(word)     => println!("word: {:?}", word),
+      Item::Number(number) => println!("number: {:?}", number)
+    }
+  }
+}
+```
+
+<a name='mapping_streams'></a>
+## Mapping streams
+
+Sometimes, it may be desirable to map one stream to another stream. Streams provide a .map() function
+a caller can use to map a stream into another stream. The following example builds on the merge example, mapping
+different streams into a unified type.
+
+```rust
+mod smoke;
+use smoke::async::Stream;
+
+#[derive(Debug)]
+enum Item {
+  Number(i32),
+  Word(&'static str)
+}
+
+fn numbers() -> Stream<i32> {
+  Stream::new(|sender| {
+    try! (sender.send(1) );
+    try! (sender.send(2) );
+    try! (sender.send(3) );
+    try! (sender.send(4) );
+    Ok(())
+  }) 
+}
+
+fn words() -> Stream<&'static str> {
+  Stream::new(|sender| {
+      "the quick brown fox jumps over the lazy dog"
+        .split(" ")
+        .map(|n| sender.send(n))
+        .last()
+        .unwrap()
+  }) 
+}
+
+
+fn main() {
+  // mux
+  let stream = Stream::all(vec![
+    numbers().map(|n| Item::Number(n)),
+    words().map  (|n| Item::Word(n))
   ]);
   // demux
   for item in stream.sync(0) {

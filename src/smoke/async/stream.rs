@@ -32,6 +32,8 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::mpsc::{Receiver};
 
+use super::task::Task;
+
 //-------------------------------------------
 // StreamFunc<T> 
 //-------------------------------------------
@@ -124,7 +126,38 @@ impl<T> Stream<T> where T: Send + 'static {
     }
 }
 impl<T> Stream<T> where T: Send + 'static {
-   
+    
+    pub fn filter<F>(self, func:F) -> Stream<T>
+        where F: Fn(&T) -> bool + Send + 'static {
+        Stream::new(move |sender| {
+            for value in self.sync(0) {
+                if func(&value) {
+                    try!(sender.send(value));
+                }
+            } Ok(())
+        })
+    }
+    
+    pub fn map<F, U>(self, func:F) -> Stream<U>
+        where U: Send + 'static,
+              F: Fn(T) -> U + Send + 'static {
+        Stream::new(move |sender| {
+            for value in self.sync(0) {
+                try!(sender.send(func(value)));
+            } Ok(())
+        })
+    }
+    
+    pub fn reduce<F>(self, func:F, value: T) -> Task<T, ()>
+        where F: Fn(T, T) -> T + Send + 'static {
+        Task::new(move || {
+            let mut accumulator = value;
+            for value in self.sync(0) {
+                accumulator = func(accumulator, value)
+            } Ok(accumulator)
+        })
+    }
+    
     pub fn sync(self, bound: usize) -> Receiver<T> {
         let (sender, receiver) = sync_channel(bound);
         thread::spawn(move || {
