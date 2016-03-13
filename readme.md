@@ -17,7 +17,7 @@ This library provides task / stream primitives to help orchestrate concurrency i
   * [Merging streams](#merging_streams)
   * [Mapping streams](#mapping_streams)
 * [Examples](#examples)
-  * [Processing files](#processing files)
+  * [Processing files](#processing_files)
 
 <a name='task'></a>
 ## Task&lt;T, E&gt;
