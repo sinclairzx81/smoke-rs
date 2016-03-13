@@ -16,6 +16,8 @@ This library provides task / stream primitives to help orchestrate concurrency i
   * [Reading streams](#reading_streams)
   * [Merging streams](#merging_streams)
   * [Mapping streams](#mapping_streams)
+* [Examples](#examples)
+  * [Processing files](#processing files)
 
 <a name='task'></a>
 ## Task&lt;T, E&gt;
@@ -350,5 +352,67 @@ fn main() {
       Item::Number(number) => println!("number: {:?}", number)
     }
   }
+}
+```
+
+<a name='examples'></a>
+## Examples
+
+<a name='processing_files'></a>
+### Processing files
+
+The program below will demonsrates a simple file processor using Tasks and Streams. The filestream()
+function will opens a file as a Stream, scan() scans the files bytes and totals the number of bytes read, given
+as a Task.
+
+```rust
+mod smoke;
+use smoke::async::{Task, Stream};
+use std::fs::File;
+use std::io::prelude::*;
+
+//------------------------------------
+// filestream(): returns a filestream.
+//------------------------------------
+fn filestream(filename: &'static str) -> Stream<(usize, [u8; 16384])> {
+  let mut file = File::open(filename).unwrap();
+  Stream::new(move |sender| {
+    println!("filestream: {}", filename);
+    loop {
+      let mut buf = [0; 16384];
+      let size = file.read(&mut buf).unwrap();
+      if size > 0 {
+        try!(sender.send((size, buf)));
+      } else {
+        break;
+      }
+    } Ok(())
+  })
+}
+
+//--------------------------------------
+// scan(): returns the number of bytes.
+//--------------------------------------
+fn scan(filename: &'static str) -> Task<usize, ()> {
+  Task::new(move || {
+    println!("scan: {}", filename);
+    let mut count = 0;
+    for (size, _) in filestream(filename).sync(0) {
+      count = count + size;
+    } Ok(count)
+  })
+}
+
+fn main() {
+  println!("begin");
+  let result = Task::all(vec![
+    scan("file1.dat"),
+    scan("file2.dat"),
+    scan("file3.dat"),
+    scan("file4.dat"),
+    scan("file5.dat")
+    // ... more
+  ]).sync().unwrap();
+  println!("results: {:?}", result);
 }
 ```

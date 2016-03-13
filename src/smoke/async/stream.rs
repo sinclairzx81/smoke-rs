@@ -176,4 +176,3 @@ impl<T> Stream<T> where T: Send + 'static {
         receiver
     }
 }
-
