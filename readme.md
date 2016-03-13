@@ -87,7 +87,8 @@ fn main() {
 }
 ```
 optionally, the result can be obtained on a continuation. 
-```
+
+```rust
 fn main() {
     let task = Task::<i32, i32>::new(|| {
         println!("inside the task");
