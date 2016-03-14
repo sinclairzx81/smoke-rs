@@ -29,6 +29,5 @@ THE SOFTWARE.
 pub mod task;
 pub mod stream;
 
-
 pub use self::task::Task;
 pub use self::stream::Stream;

@@ -6,106 +6,85 @@ Concurrency primitives for the Rust programming language.
 
 This library provides task / stream primitives to help orchestrate concurrency in Rust.  
 
-* [Task&lt;T, E&gt;](#task)
+* [Task&lt;T&gt;](#task)
   * [Creating tasks](#creating_tasks)
   * [Run task synchronously](#run_task_synchronously)
   * [Run task asynchronously](#run_task_asynchronously)
   * [Run tasks in parallel](#run_tasks_in_parallel)
+  * [Composing Tasks](#composing_tasks)
 * [Stream&lt;T&gt;](#stream)
-  * [Creating streams](#creating_streams)
-  * [Reading streams](#reading_streams)
-  * [Merging streams](#merging_streams)
-  * [Mapping streams](#mapping_streams)
+  * [Creating Streams](#creating_streams)
+  * [Reading Streams](#reading_streams)
+  * [Combining Streams](#combining_streams)
+  * [Composing Streams](#composing_streams)
 * [Examples](#examples)
   * [Processing files](#processing_files)
 
 <a name='task'></a>
-## Task&lt;T, E&gt;
+## Task&lt;T&gt;
 
-A Task encapsulates a single operation and provides a means to run that operation 
-synchronously or asynchronously. A task achieves this by providing the caller a .sync() 
-or .async() method which the caller can use to resolve a std::Result&lt;T, E&gt;.
+A Task encapsulates a single asynchronous operation. 
 
 <a name='creating_tasks'></a>
 ### Creating Tasks
 
-The following will create a task. It is important to note that a task
-will not execute immediately and the caller is expected to call .sync() or .async()
-on the task to execute the tasks body.
+The following will create a Task&lt;i32&gt;. The body of this task will not execute
+until a caller calls either calls .sync() or .async() to obtain the result.
 
 ```rust
 mod smoke;
 use smoke::async::Task;
 
 fn main() {
-    let task = Task::<i32, i32>::new(|| {
+    let task = Task::new(|sender| {
         println!("inside the task");
-        Ok(123)
+        sender.send(123)
     });
 }
 ```
 
 <a name='run_task_synchronously'></a>
-### Run task synchronously
+### Run Tasks synchronously
 
-The following creates a task which resolves a Result<&lt;i32, i32&gt; and executes it synchronously.
+Tasks can be run synchronously with the .sync() function. The .sync() 
+function returns a Result&lt;T, RecvError&gt; containing the result.
 
 ```rust
 mod smoke;
 use smoke::async::Task;
 
 fn main() {
-    let task = Task::<i32, i32>::new(|| {
+    let task = Task::new(|sender| {
         println!("inside the task");
-        Ok(123)
+        sender.send(123)
     });
     
-    let number = task.sync().unwrap();
+    println!("{}", task.sync().unwrap());
 }
 ```
 
 <a name='run_task_asynchronously'></a>
-### Run task asynchronously
+### Run Tasks asynchronously
 
-The following creates a task which resolves a Result&lt;i32, i32&gt; and executes it asynchronously. Internally,
-the task will be executed within a new thread. .async() returns a JoinHandle&lt;Result&lt;i32, i32&gt;&gt; a caller
-can .join() later to obtain the result later.
+Tasks can be run asynchronously with the .async() function. The .async() 
+function returns a JoinHandle&lt;T&gt; for the caller to .join() at some
+point in the future.
 
 ```rust
 mod smoke;
 use smoke::async::Task;
 
 fn main() {
-    let task = Task::<i32, i32>::new(|| {
+    let task = Task::new(|sender| {
         println!("inside the task");
-        Ok(123)
+        sender.send(123)
     });
     
     let handle = task.async();
-    // ...
-    let result = handle.join().unwrap();
+    // do other work...
+    println!("{}", handle.join().unwrap());
 }
 ```
-optionally, the result can be obtained on a continuation. 
-
-```rust
-fn main() {
-    let task = Task::<i32, i32>::new(|| {
-        println!("inside the task");
-        Ok(123)
-    });
-    
-    let handle = task.async_then(|result| {
-      println!("result: {}", result.unwrap());
-      
-      // optionally return
-    });
-    
-    // ... do other work.
-    let _ = handle.join().unwrap();
-}
-```
-
 <a name='run_tasks_in_parallel'></a>
 ### Run tasks in parallel
 
@@ -116,13 +95,10 @@ task of type Task&lt;Vec&lt;T&gt;, E&gt;.
 ```rust
 mod smoke;
 use smoke::async::Task;
-use std::thread;
-use std::time::Duration;
 
-fn add(a: i32, b: i32) -> Task<i32, ()> {
-  Task::new(move || {
-    thread::sleep(Duration::from_secs(1));
-    Ok(a + b)
+fn add(a: i32, b: i32) -> Task<i32> {
+  Task::new(move |sender| {
+    sender.send(a + b)
   })
 }
 
@@ -131,10 +107,40 @@ fn main() {
      add(10, 20),
      add(20, 30),
      add(30, 40)
-   ]).sync().unwrap(); 
+   ]).sync();
    
    // [30, 50, 70]
-   println!("{:?}", result); 
+   println!("{:?}", result.unwrap()); 
+}
+```
+<a name='composing_tasks'></a>
+### Composing Tasks
+
+Tasks can be composed into larger computations with the 
+.then() function. The .then() function is similar to a .map() function
+in the regard it allows tasks to be mapped into other tasks. The 
+result is a new task that callers can use to execute the computation.
+
+```rust
+mod smoke;
+use smoke::async::Task;
+
+fn add(a: i32, b: i32) -> Task<i32> {
+  Task::new(move |sender| {
+    sender.send(a + b)
+  })
+}
+
+fn main() {
+   let value =  add(1, 2)
+                  .then(|n| add(n, n+1))
+                  .then(|n| add(n, n+1))
+                  .then(|n| add(n, n+1))
+                  .then(|n| add(n, n+1))
+                  .sync();
+                              
+   // 63
+   println!("{:?}", value.unwrap());
 }
 ```
 
@@ -143,27 +149,27 @@ fn main() {
 
 Stream&lt;T&gt; provides a means to generate async sequences from 
 which a caller may listen to. Internally, Stream&lt;T&gt; abstracts 
-mpsc channels and provides some composability methods to aid in data 
+mpsc channels and provides some composability functions to aid in data 
 flow.
-
 
 <a name='creating_streams'></a>
 ## Creating Streams
 
-The following creates a simple sequence of numbers. 
+The following creates a simple sequence of numbers. The streams closure 
+expects a Result&lt;(), SendError&gt; result which can be obtain from the sender.
+The stream ends once this closure finishes.
 
 ```rust
 mod smoke;
 use smoke::async::Stream;
 
 fn main() {
+  // a stream of numbers, 1 - 4.
   let stream = Stream::new(|sender| {
-      println!("inside stream");
       try! (sender.send(1) );
       try! (sender.send(2) );
       try! (sender.send(3) );
-      try! (sender.send(4) );
-      Ok(())
+      sender.send(4) // ok
   });
 }
 ```
@@ -171,87 +177,41 @@ fn main() {
 <a name='reading_streams'></a>
 ## Reading Streams
 
-A stream can be read with the streams .sync() and .async() functions. Internally,
-.sync() and .async() functions map to mpsc SyncSender and Sender respectively. 
+A stream can be read with the .async() and .sync(bound) functions. Internally, the
+.async() and .sync(bound) provide a abstraction over a mpsc channel() or sync_channel(bound) 
+respectively.
 
-Consider the following stream.
+For details see..
+* [std::sync::mpsc::channel](#https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
+* [std::sync::mpsc::sync_channel](#https://doc.rust-lang.org/std/sync/mpsc/fn.sync_channel.html)
+
+Calling .sync() or .async() on a stream returns a Receiver&lt;T&gt; a caller can use
+to iterate elements. 
 
 ```rust
 mod smoke;
 use smoke::async::Stream;
 
+// creates a stream of numbers.
 fn numbers() -> Stream<i32> {
     Stream::new(|sender| {
-      for n in 0..5 {
-          try! ( sender.send(n) );
-          println!("sent: {}", n);
-      }
-      Ok(())
+      (0..100)
+        .map(|n| sender.send(n))
+        .last()
+        .unwrap()
     })
 }
-```
-
-The code below will call the stream with .async(). This will start reading the entire stream from
-start to finish. Because the reader is sleeping the thread (emulating some contention), the .async()
-function will internally buffer streamed data until the reader gets around to reading it.
-
-```rust
-use std::thread;
-use std::time::Duration;
 
 fn main() {
   for n in numbers().async() {
-      thread::sleep(Duration::from_secs(1));
       println!("recv: {}", n);
   }
 }
 
-// output:
-// sent: 0
-// sent: 1
-// sent: 2
-// sent: 3
-// sent: 4
-// recv: 0
-// recv: 1
-// recv: 2
-// recv: 3
-// recv: 4
 ```
 
-Often, buffering is not desirable instances where the stream may produce large amounts of data (for example, streaming
-data from a large file). In these instances, callers can use the .sync(bound) function. Unlike the .async() function which
-will buffer infinately, .sync(bound) will buffer items up to the specified bound. If the bound is exceeded, the streams sender
-will block.
-
-With this, callers can read in lock-stop with the stream.
-
-```rust
-use std::thread;
-use std::time::Duration;
-
-fn main() {
-  for n in numbers().sync(0) {
-      thread::sleep(Duration::from_secs(1));
-      println!("sent: {}", n);
-  }
-}
-
-// output:
-// sent: 0
-// recv: 0
-// sent: 1
-// recv: 1
-// sent: 2
-// recv: 2
-// sent: 3
-// recv: 3
-// sent: 4
-// recv: 4
-```
-
-<a name='merging_streams'></a>
-## Merging streams
+<a name='combining_streams'></a>
+## Combining streams
 
 Multiple streams of the same type can be merged into a single stream. The following creates two 
 distinct streams (numbers and words), merges them into a single stream and reads.
@@ -287,13 +247,13 @@ fn words() -> Stream<Item> {
 }
 
 fn main() {
-  // mux
-  let stream = Stream::all(vec![
+  // combine ...
+  let stream = Stream::combine(vec![
     numbers(),
     words()
   ]);
-  // demux
-  for item in stream.sync(0) {
+  // read ...
+  for item in stream.async() {
     match item {
       Item::Word(word)     => println!("word: {:?}", word),
       Item::Number(number) => println!("number: {:?}", number)
@@ -302,30 +262,23 @@ fn main() {
 }
 ```
 
-<a name='mapping_streams'></a>
-## Mapping streams
+<a name='composing_streams'></a>
+## Composing Streams
 
-Sometimes, it may be desirable to map one stream to another stream. Streams provide a .map() function
-a caller can use to map one stream into another. The following example builds on the merge example, mapping
-different streams into a unified type. Useful for integration.
+Streams support composition in a similar fashion to Tasks. Callers
+can use .map() .filter() and .fold() to map and modify the stream 
+prior to calling .sync() or .async() to read the stream.
 
 ```rust
 mod smoke;
 use smoke::async::Stream;
-
-#[derive(Debug)]
-enum Item {
-  Number(i32),
-  Word(&'static str)
-}
 
 fn numbers() -> Stream<i32> {
   Stream::new(|sender| {
     try! (sender.send(1) );
     try! (sender.send(2) );
     try! (sender.send(3) );
-    try! (sender.send(4) );
-    Ok(())
+    sender.send(4)
   }) 
 }
 
@@ -339,15 +292,21 @@ fn words() -> Stream<&'static str> {
   }) 
 }
 
+#[derive(Debug)]
+enum Item {
+  Number(i32),
+  Word(&'static str)
+}
 
 fn main() {
-  // mux
-  let stream = Stream::all(vec![
+  // map streams ...
+  let stream = Stream::combine(vec![
     numbers().map(|n| Item::Number(n)),
     words().map  (|n| Item::Word(n))
   ]);
-  // demux
-  for item in stream.sync(0) {
+  
+  // read ...
+  for item in stream.async() {
     match item {
       Item::Word(word)     => println!("word: {:?}", word),
       Item::Number(number) => println!("number: {:?}", number)
@@ -372,9 +331,9 @@ use smoke::async::{Task, Stream};
 use std::fs::File;
 use std::io::prelude::*;
 
-//------------------------------------
-// filestream(): returns a filestream.
-//------------------------------------
+//------------------------------------------------
+// filestream(): streams the bytes in this file.
+//------------------------------------------------
 fn filestream(filename: &'static str) -> Stream<(usize, [u8; 16384])> {
   let mut file = File::open(filename).unwrap();
   Stream::new(move |sender| {
@@ -392,15 +351,15 @@ fn filestream(filename: &'static str) -> Stream<(usize, [u8; 16384])> {
 }
 
 //--------------------------------------
-// scan(): returns the number of bytes.
+// scan(): scan and count bytes..
 //--------------------------------------
-fn scan(filename: &'static str) -> Task<usize, ()> {
-  Task::new(move || {
+fn scan(filename: &'static str) -> Task<usize> {
+  Task::new(move |sender| {
     println!("scan: {}", filename);
     let mut count = 0;
     for (size, _) in filestream(filename).sync(0) {
       count = count + size;
-    } Ok(count)
+    } sender.send(count)
   })
 }
 

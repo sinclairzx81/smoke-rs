@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{ SendError, RecvError };
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -33,80 +35,105 @@ use std::thread::JoinHandle;
 // TaskFunc
 //---------------------------------------------------------
 
-trait TaskFunc {
+trait TaskFunc<T> {
     type Output;
-    fn call(self: Box<Self>) -> Self::Output;
+    fn call(self: Box<Self>, value:T) -> Self::Output;
 }
-impl<R, F: FnOnce() -> R> TaskFunc for F {
+impl<R, T, F: FnOnce(T) -> R> TaskFunc<T> for F {
     type Output = R;
-    fn call(self: Box<Self>) -> R {
-        self()
+    fn call(self: Box<Self>, value: T) -> R {
+        self(value)
+    }
+}
+
+//---------------------------------------------------------
+// TaskSender<T> 
+//---------------------------------------------------------
+struct TaskSender<T> {
+   sender: SyncSender<T>
+}
+impl<T> TaskSender<T> {
+    fn new(sender: SyncSender<T>) -> TaskSender<T> {
+      TaskSender {
+        sender: sender
+      }
+    }
+    pub fn send(self, value:T) -> Result<(), SendError<T>> {
+      self.sender.send(value)
     }
 }
 
 //---------------------------------------------------------
 // Task<T, E> 
 //---------------------------------------------------------
-pub struct Task<T, E> {
-    func: Box<TaskFunc<Output = Result<T, E>> + Send + 'static>
+pub struct Task<T> {
+    func: Box<TaskFunc<TaskSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
 }
-
-impl <T, E> Task<T, E> {
+impl <T> Task<T> {
+    
     //---------------------------------------------------------
-    // creates a new task.
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn new<F>(func: F) -> Task<T, E>
-        where F: FnOnce() -> Result<T, E> + Send + 'static {
+    // new() creates a new task.
+    //---------------------------------------------------------   
+    pub fn new<F>(func: F) -> Task<T>
+        where F: FnOnce(TaskSender<T>) -> Result<(), SendError<T>> + Send + 'static {
         Task {
             func: Box::new(func)
         }
     }
+    
     //---------------------------------------------------------
-    // runs this task synchronously.
-    //---------------------------------------------------------
-    #[allow(dead_code)]   
-    pub fn sync(self) -> Result<T, E> {
-        self.func.call()
+    // sync() executes this task synchronously.
+    //---------------------------------------------------------     
+    pub fn sync(self) -> Result<T, RecvError> {
+        let (sender, receiver) = sync_channel(1);
+        let sender = TaskSender::new(sender);
+        match self.func.call(sender) {
+            Err(_) => panic!("task failed to execute."),
+            Ok(_)  => match receiver.recv() {
+                        Err (_)      => panic!("task gave no result."),
+                        Ok  (result) => Ok(result)
+                      }
+        }
     }
 }
 
 //---------------------------------------------------------
 // Task<T, E> for Send + 'static
 //---------------------------------------------------------
-impl<T, E> Task<T, E> where T: Send + 'static,
-                            E: Send + 'static {
-                              
+impl<T> Task<T> where T: Send + 'static {
+    
     //---------------------------------------------------------
-    // executes the given tasks in parallel.
-    //---------------------------------------------------------  
-    #[allow(dead_code)]            
-    pub fn all(tasks: Vec<Task<T, E>>) -> Task<Vec<T>, E> {
-        Task::<Vec<T>, E>::new(|| {
-            tasks.into_iter()
-                 .map(|task| thread::spawn(|| task.sync() ) )
-                 .collect::<Vec<_>>()
-                 .into_iter()
-                 .map(|handle| handle.join().unwrap())
-                 .collect()
+    // async() executes this task asynchronously.
+    //--------------------------------------------------------- 
+    pub fn async(self) -> JoinHandle<T> {
+        thread::spawn(move || self.sync().unwrap())
+    }
+    
+    //---------------------------------------------------------
+    // then() continues this task into another.
+    //---------------------------------------------------------
+    pub fn then<U, F>(self, func: F) -> Task<U> where 
+        U : Send + 'static,
+        F : FnOnce(T) -> Task<U> + Send + 'static {
+      func(self.sync().unwrap())
+    }
+    
+    //---------------------------------------------------------
+    // all() runs the given tasks in parallel.
+    //---------------------------------------------------------
+    pub fn all(tasks: Vec<Task<T>>) -> Task<Vec<T>> {
+        Task::<Vec<T>>::new(move |sender| {
+            let result:Result<Vec<_>, RecvError> 
+                = tasks.into_iter()
+                       .map(|task| thread::spawn(|| task.sync() ) )
+                       .collect::<Vec<_>>()
+                       .into_iter()
+                       .map(|handle| handle.join().unwrap())
+                       .collect();
+            match result {
+              Ok (value) => sender.send(value),
+              Err(error) => panic!(error)
+            }
         })
     }
-    
-    //---------------------------------------------------------
-    // executes this task asynchronously.
-    //--------------------------------------------------------- 
-    #[allow(dead_code)] 
-    pub fn async(self) -> JoinHandle<Result<T, E>> {
-        thread::spawn(move || self.sync())
-    }
-    
-    //---------------------------------------------------------
-    // executes this task asynchronously.
-    //--------------------------------------------------------- 
-    #[allow(dead_code)] 
-    pub fn async_then<F, U>(self, closure: F) -> JoinHandle<U>
-        where U: Send + 'static,
-              F: FnOnce(Result<T, E>) -> U + Send + 'static {
-        thread::spawn(move || closure(self.sync()))
-    }    
 }

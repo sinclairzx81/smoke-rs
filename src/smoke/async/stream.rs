@@ -26,17 +26,19 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-use std::thread;
+
 use std::sync::mpsc::{SendError};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::mpsc::{Receiver};
+use std::thread;
 
 use super::task::Task;
 
 //-------------------------------------------
 // StreamFunc<T> 
 //-------------------------------------------
+
 trait StreamFunc<T> {
     type Output;
     fn call(self: Box<Self>, arg: T) -> Self::Output;
@@ -47,132 +49,179 @@ impl<T, TResult, F: FnOnce(T) -> TResult> StreamFunc<T> for F {
         self(value)
     }
 }
+
 //-------------------------------------------
-// StreamSender<T> 
+// StreamOption<T> 
 //-------------------------------------------
-enum SenderOption<T> {
+enum StreamOption<T> {
   Sync  (SyncSender<T>),
   Async (Sender<T>)
 }
+
+//-------------------------------------------
+// StreamSender<T> 
+//-------------------------------------------
 pub struct StreamSender<T> {
-  option: SenderOption<T>
+  option: StreamOption<T>
 }
+
+//-------------------------------------------
+// StreamSender<T> for Send + 'static
+//-------------------------------------------
 impl<T> StreamSender<T> where T: Send + 'static {
   fn async(sender: Sender<T>) -> StreamSender<T> {
-    StreamSender { option: SenderOption::Async(sender) }
+    StreamSender {
+      option: StreamOption::Async(sender) 
+    }
   }
   fn sync(sender: SyncSender<T>) -> StreamSender<T> {
-    StreamSender { option: SenderOption::Sync(sender) }
+    StreamSender { 
+      option: StreamOption::Sync(sender) 
+    }
   }
+
   pub fn send(&self, value:T) -> Result<(), SendError<T>> {
     match self.option {
-      SenderOption::Async(ref sender) 
-        => sender.send(value),
-      SenderOption::Sync (ref sender)  
-        => sender.send(value)
+      StreamOption::Async(ref sender) => sender.send(value),
+      StreamOption::Sync (ref sender) => sender.send(value)
     }
   }
 }
-impl<T> Clone for StreamSender<T> {
+impl<T> Clone for StreamSender<T> where T: Send + 'static {
   fn clone(&self) -> StreamSender<T> {
     match self.option {
-      SenderOption::Async(ref sender) 
-        => StreamSender { option: SenderOption::Async(sender.clone()) },
-      SenderOption::Sync (ref sender) 
-        => StreamSender { option: SenderOption::Sync (sender.clone()) }
+      StreamOption::Async(ref sender) => StreamSender::async(sender.clone()),
+      StreamOption::Sync (ref sender) => StreamSender::sync(sender.clone())
     }
   }
 }
+
 //-------------------------------------------
 // Stream<T> 
 //-------------------------------------------
 pub struct Stream<T>  {
   func: Box<StreamFunc<StreamSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
 }
+
+//-------------------------------------------
+// Stream<T> for Send + 'static
+//-------------------------------------------
 impl<T> Stream<T> where T: Send + 'static {
-    pub fn new<F>(func:F) -> Stream<T>
-        where F: FnOnce(StreamSender<T>) -> Result<(), SendError<T>> + Send + 'static {
-        Stream {
-            func: Box::new(func)
-        }
-    }
-    pub fn all(streams: Vec<Stream<T>>) -> Stream<T> {
-        Stream::new(move |sender| {
-            let handles = streams.into_iter().map(move |stream| {
-                let sender = sender.clone();
-                thread::spawn::<_, Result<(), SendError<T>>>(move || {
-                    for value in stream.sync(0) {
-                        try!(sender.send(value));
-                    } Ok(())
-                })
-            }).collect::<Vec<_>>()
-              .into_iter()
-              .map(|handle| handle.join())
-              .collect::<Result<Vec<_>, _>>();
-             match handles {
-                 Err(_) => panic!("thread paniced"),
-                 Ok(send_results) => {
-                     let results = 
-                        send_results
-                            .into_iter()
-                            .collect::<Result<Vec<_>, _>>();
-                    match results {
-                        Err(err) => Err(err),
-                        Ok(_) => Ok(())
-                    }
-                 }
-             }
-        })
-    }
+    
+  //-------------------------------------------
+  // new(): creates a new stream.
+  //-------------------------------------------  
+  pub fn new<F>(func:F) -> Stream<T>  where
+      F: FnOnce(StreamSender<T>) -> Result<(), SendError<T>> + Send + 'static {
+      Stream {
+          func: Box::new(func)
+      }
+  }
+  
+  //-------------------------------------------
+  // combine(): combines N streams into 1.
+  //-------------------------------------------  
+  pub fn combine(streams: Vec<Stream<T>>) -> Stream<T> {
+      Stream::new(move |sender| {
+        let handles = streams.into_iter()
+                .map(move |stream| {
+                  let sender = sender.clone();
+                  thread::spawn(move ||
+                      stream.sync(0).into_iter()
+                                    .map(|n| sender.send(n))
+                                    .last()
+                                    .unwrap())
+                      }).collect::<Vec<_>>()
+                        .into_iter()
+                        .map(|handle| handle.join())
+                        .collect::<Result<Vec<_>, _>>();
+          match handles {
+              Err(error)       => panic!(error), // thread panic.
+              Ok(send_results) => match send_results.into_iter()
+                                        .collect::<Result<Vec<_>, _>>() {
+                                            Err(err) => Err(err),
+                                            Ok(_)    => Ok (())
+                                        }
+          }
+      })
+  }
 }
+
+//---------------------------------------------------------
+// Stream<T> for Send + 'static
+//--------------------------------------------------------- 
 impl<T> Stream<T> where T: Send + 'static {
     
-    pub fn filter<F>(self, func:F) -> Stream<T>
-        where F: Fn(&T) -> bool + Send + 'static {
-        Stream::new(move |sender| {
-            for value in self.sync(0) {
-                if func(&value) {
-                    try!(sender.send(value));
-                }
-            } Ok(())
-        })
+  //---------------------------------------------------------
+  // filter() filters elements from this stream.
+  //--------------------------------------------------------- 
+  pub fn filter<F>(self, func:F) -> Stream<T> where 
+      F: Fn(&T) -> bool + Send + 'static {
+      Stream::new(move |sender|
+        self.sync(0).into_iter()
+                    .filter(|n| func(n))
+                    .map(|n| sender.send(n))
+                    .last()
+                    .unwrap())
+  }
+    
+  //---------------------------------------------------------
+  // map() maps this stream into another stream.
+  //--------------------------------------------------------- 
+  pub fn map<F, U>(self, func:F) -> Stream<U> where 
+    U: Send + 'static,
+    F: Fn(T) -> U + Send + 'static {
+      Stream::new(move |sender| 
+        self.sync(0).into_iter()
+                    .map(|n| sender.send(func(n)))
+                    .last()
+                    .unwrap())
+  }
+
+  //---------------------------------------------------------
+  // fold() reduces this stream to a single value.
+  //---------------------------------------------------------  
+  pub fn fold<F>(self, init: T, func:F) -> Task<T> where 
+    F: FnMut(T, T) -> T + Send + 'static {
+      Task::new(move |sender|
+        sender.send(self.sync(0)
+                        .into_iter()
+                        .fold(init, func)))
     }
     
-    pub fn map<F, U>(self, func:F) -> Stream<U>
-        where U: Send + 'static,
-              F: Fn(T) -> U + Send + 'static {
-        Stream::new(move |sender| {
-            for value in self.sync(0) {
-                try!(sender.send(func(value)));
-            } Ok(())
-        })
-    }
-    
-    pub fn reduce<F>(self, func:F, value: T) -> Task<T, ()>
-        where F: Fn(T, T) -> T + Send + 'static {
-        Task::new(move || {
-            let mut accumulator = value;
-            for value in self.sync(0) {
-                accumulator = func(accumulator, value)
-            } Ok(accumulator)
-        })
-    }
-    
+    //---------------------------------------------------------
+    // sync() begins reading from this stream with a bound.
+    //--------------------------------------------------------- 
     pub fn sync(self, bound: usize) -> Receiver<T> {
         let (sender, receiver) = sync_channel(bound);
-        thread::spawn(move || {
-          let emit = StreamSender::sync(sender);
-          self.func.call(emit).unwrap();
-          });
+        let _ = thread::spawn(move || 
+          self.func.call(StreamSender::sync(sender)));
         receiver
     }
     
+    //---------------------------------------------------------
+    // async() begins reading from this stream.
+    //--------------------------------------------------------- 
     pub fn async(self) -> Receiver<T> {
         let (sender, receiver) = channel();
-        thread::spawn(move || {
-            let emit = StreamSender::async(sender);
-            self.func.call(emit).unwrap();
-          });
+        let _ = thread::spawn(move || 
+            self.func.call(StreamSender::async(sender)));
         receiver
     }
+}
+
+//---------------------------------------------------------
+// Stream<i32>
+//--------------------------------------------------------- 
+impl Stream<i32>  {
+  
+  //---------------------------------------------------------
+  // range() creates a stream range.
+  //--------------------------------------------------------- 
+  pub fn range(start: i32, end: i32) -> Stream<i32> {
+    Stream::new(move |sender| (start..end)
+                  .map(|n| sender.send(n))
+                  .last()
+                  .unwrap())
+  }
 }
