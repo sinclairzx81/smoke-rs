@@ -153,7 +153,7 @@ mpsc channels and provides some composability functions to aid in data
 flow.
 
 <a name='creating_streams'></a>
-## Creating Streams
+### Creating Streams
 
 The following creates a simple sequence of numbers. The streams closure 
 expects a Result&lt;(), SendError&gt; result which can be obtain from the sender.
@@ -175,7 +175,7 @@ fn main() {
 ```
 
 <a name='reading_streams'></a>
-## Reading Streams
+### Reading Streams
 
 A stream can be read with the .async() and .sync(bound) functions. Internally, the
 .async() and .sync(bound) provide a abstraction over a mpsc channel() or sync_channel(bound) 
@@ -211,7 +211,7 @@ fn main() {
 ```
 
 <a name='combining_streams'></a>
-## Combining Streams
+### Combining Streams
 
 Multiple streams of the same type can be merged into a single stream. The following creates two 
 distinct streams (numbers and words), merges them into a single stream and reads.
@@ -263,7 +263,7 @@ fn main() {
 ```
 
 <a name='composing_streams'></a>
-## Composing Streams
+### Composing Streams
 
 Streams support composition in a similar fashion to Tasks. Callers
 can use .map() .filter() and .fold() to map and modify the stream 
