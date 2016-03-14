@@ -89,7 +89,7 @@ impl ThreadPool {
         data.active -= 1;		
     }
     //---------------------------------------------------------
-    // process() creates a new threadpool.
+    // process() attempts to process the next item in queue.
     //---------------------------------------------------------
     fn process(&self) {
         let result = {
