@@ -4,7 +4,7 @@
     "isShellCommand": true,
     "tasks": [
         {
-            "taskName": "run",
+            "taskName": "build",
             "isBuildCommand": true,
             "showOutput": "always",
             "problemMatcher": {

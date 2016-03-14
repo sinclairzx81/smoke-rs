@@ -89,10 +89,7 @@ impl <T> Task<T> {
         let sender = TaskSender::new(sender);
         match self.func.call(sender) {
             Err(_) => panic!("task failed to execute."),
-            Ok(_)  => match receiver.recv() {
-                        Err (_)      => panic!("task gave no result."),
-                        Ok  (result) => Ok(result)
-                      }
+            Ok(_)  => receiver.recv()
         }
     }
 }

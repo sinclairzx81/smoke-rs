@@ -1,4 +1,6 @@
 [package]
-name = "smoke-rs"
+name = "smoke"
 version = "0.1.0"
 authors = ["sinclairzx81 <haydn.developer@gmail.com>"]
+
+[dependencies]
