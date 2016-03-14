@@ -7,10 +7,10 @@ Concurrency primitives for the Rust programming language.
 This library provides task / stream primitives to help orchestrate concurrency in Rust.  
 
 * [Task&lt;T&gt;](#task)
-  * [Creating tasks](#creating_tasks)
-  * [Run task synchronously](#run_task_synchronously)
-  * [Run task asynchronously](#run_task_asynchronously)
-  * [Run tasks in parallel](#run_tasks_in_parallel)
+  * [Creating Tasks](#creating_tasks)
+  * [Run Tasks Synchronously](#run_tasks_synchronously)
+  * [Run Tasks Asynchronously](#run_tasks_asynchronously)
+  * [Run Tasks in Parallel](#run_tasks_in_parallel)
   * [Composing Tasks](#composing_tasks)
 * [Stream&lt;T&gt;](#stream)
   * [Creating Streams](#creating_streams)
@@ -18,7 +18,7 @@ This library provides task / stream primitives to help orchestrate concurrency i
   * [Combining Streams](#combining_streams)
   * [Composing Streams](#composing_streams)
 * [Examples](#examples)
-  * [Processing files](#processing_files)
+  * [Processing Files](#processing_files)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
@@ -43,8 +43,8 @@ fn main() {
 }
 ```
 
-<a name='run_task_synchronously'></a>
-### Run Tasks synchronously
+<a name='run_tasks_synchronously'></a>
+### Run Tasks Synchronously
 
 Tasks can be run synchronously with the .sync() function. The .sync() 
 function returns a Result&lt;T, RecvError&gt; containing the result.
@@ -63,8 +63,8 @@ fn main() {
 }
 ```
 
-<a name='run_task_asynchronously'></a>
-### Run Tasks asynchronously
+<a name='run_tasks_asynchronously'></a>
+### Run Tasks Asynchronously
 
 Tasks can be run asynchronously with the .async() function. The .async() 
 function returns a JoinHandle&lt;T&gt; for the caller to .join() at some
@@ -86,7 +86,7 @@ fn main() {
 }
 ```
 <a name='run_tasks_in_parallel'></a>
-### Run tasks in parallel
+### Run Tasks in Parallel
 
 Tasks can be run in parallel by calling Task::all(). The all() method wraps the inner tasks in a outer task
 that the caller can use to obtain the results. In this regard, a vector of Task&lt;T, E&gt; will map to a new
@@ -211,7 +211,7 @@ fn main() {
 ```
 
 <a name='combining_streams'></a>
-## Combining streams
+## Combining Streams
 
 Multiple streams of the same type can be merged into a single stream. The following creates two 
 distinct streams (numbers and words), merges them into a single stream and reads.
@@ -319,7 +319,7 @@ fn main() {
 ## Examples
 
 <a name='processing_files'></a>
-### Processing files
+### Processing Files
 
 The program below will demonsrates a simple file processor using Tasks and Streams. The filestream()
 function will opens a file as a Stream, scan() scans the files bytes and totals the number of bytes read, given
