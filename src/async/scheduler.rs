@@ -38,22 +38,28 @@ use std::any::Any;
 ///-------------------------------------------
 /// ThreadJoinHandle<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 struct ThreadJoinHandle<T> {
-    handle: StdJoinHandle<T>
+    handle: Arc<Mutex<Option<StdJoinHandle<T>>>>
 }
 impl<T> ThreadJoinHandle<T> {
-  fn new(handle: StdJoinHandle<T>) -> ThreadJoinHandle<T> {
+  fn new(handle: Arc<Mutex<Option<StdJoinHandle<T>>>>) -> ThreadJoinHandle<T> {
     ThreadJoinHandle {
       handle: handle
     }
   }
   pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
-    self.handle.join()
+    let mut option = self.handle.lock().unwrap();
+    match option.take() {
+      Some(handle) => handle.join(),
+      None => panic!()
+    }
   }
 }
 ///-------------------------------------------
 /// ThreadPoolJoinHandle<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 struct ThreadPoolJoinHandle<T> {
     handle: Arc<(Mutex<Option<T>>, Condvar)>
 }
@@ -81,6 +87,7 @@ impl<T> ThreadPoolJoinHandle<T> {
 ///-------------------------------------------
 /// JoinHandleOption<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 enum JoinHandleOption<T> {
   Thread(ThreadJoinHandle<T>),
   ThreadPool(ThreadPoolJoinHandle<T>)
@@ -89,6 +96,7 @@ enum JoinHandleOption<T> {
 ///-------------------------------------------
 /// JoinHandleOption<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 pub struct JoinHandle<T> {
   option: JoinHandleOption<T>
 }
@@ -112,13 +120,17 @@ impl<T> JoinHandle<T> {
 ///-------------------------------------------
 /// ThreadScheduler<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 struct ThreadScheduler;
 impl ThreadScheduler {
-  fn spawn<F, T>(&self, f: F) -> JoinHandle<T>
+  ///---------------------------------------------
+  /// run(): queues work on this scheduler.
+  ///---------------------------------------------   
+  fn run<F, T>(&self, f: F) -> JoinHandle<T>
   where T: Send + 'static,
         F: FnOnce() -> T + Send + 'static {
     let option = JoinHandleOption::Thread (
-      ThreadJoinHandle::new(thread::spawn(f))
+      ThreadJoinHandle::new(Arc::new(Mutex::new(Some(thread::spawn(f)))))
     ); JoinHandle::new(option)
   }
 }
@@ -126,6 +138,7 @@ impl ThreadScheduler {
 ///-------------------------------------------
 /// ThreadPoolScheduler<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 struct ThreadPoolScheduler {
   threadpool: ThreadPool
 }
@@ -135,10 +148,10 @@ impl ThreadPoolScheduler {
       threadpool: ThreadPool::new(bound)
     }
   }
-  ///-------------------------------------------
-  /// spawn() spawns a new thread in this threadpool.
-  ///-------------------------------------------    
-  fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
+  ///---------------------------------------------
+  /// run(): queues work on this scheduler.
+  ///---------------------------------------------   
+  fn run<F, T>(&self, f: F) -> JoinHandle<T> where 
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static {
     let handle   = Arc::new((Mutex::new(None), Condvar::new()));
@@ -163,6 +176,7 @@ impl ThreadPoolScheduler {
 ///-------------------------------------------
 /// SchedulerOption<T> 
 ///-------------------------------------------
+#[derive(Clone)]
 enum SchedulerOption {
   Thread(ThreadScheduler),
   ThreadPool(ThreadPoolScheduler)
@@ -171,6 +185,7 @@ enum SchedulerOption {
 ///-------------------------------------------
 /// Scheduler
 ///-------------------------------------------
+#[derive(Clone)]
 pub struct Scheduler {
   option: SchedulerOption
 }
@@ -195,16 +210,16 @@ impl Scheduler {
   }
   
   ///---------------------------------------------
-  /// spawn(): spawns work on this scheduler.
+  /// run(): queues work on this scheduler.
   ///--------------------------------------------- 
-  pub fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
+  pub fn run<F, T>(&self, f: F) -> JoinHandle<T> where 
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static {
     match self.option {
       SchedulerOption::Thread(ref scheduler) 
-        => scheduler.spawn(f),
+        => scheduler.run(f),
       SchedulerOption::ThreadPool(ref scheduler) 
-        => scheduler.spawn(f)
+        => scheduler.run(f)
     }
   }
 }
