@@ -1,15 +1,18 @@
 extern crate smoke;
-extern crate threadpool;
+
 
 #[allow(unused_imports)]
 use smoke::async::{Task, Scheduler};
+use std::thread;
 
 
 fn main() {
-  let pool = Scheduler::new();
+  
+  let pool = Scheduler::threadpool(4);
   let handle = pool.spawn(move || {
-    
   });
   
-  handle.join();
+  println!("{:?}", handle.join().unwrap());
+  
+  thread::sleep_ms(6000);
 }

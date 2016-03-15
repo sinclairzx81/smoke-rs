@@ -27,16 +27,76 @@ THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
 use std::thread;
+use std::thread::JoinHandle as StdJoinHandle;
+use std::sync::{Arc, Mutex, Condvar};
 use threadpool::ThreadPool;
+use std::any::Any;
 
 //-------------------------------------------
-// JoinHandle<T> 
+// ThreadJoinHandle<T> 
 //-------------------------------------------
+struct ThreadJoinHandle<T> {
+    handle: StdJoinHandle<T>
+}
+impl<T> ThreadJoinHandle<T> {
+  fn new(handle: StdJoinHandle<T>) -> ThreadJoinHandle<T> {
+    ThreadJoinHandle {
+      handle: handle
+    }
+  }
+  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
+    self.handle.join()
+  }
+}
+//-------------------------------------------
+// ThreadPoolJoinHandle<T> 
+//-------------------------------------------
+struct ThreadPoolJoinHandle<T> {
+    handle: Arc<(Mutex<Option<T>>, Condvar)>
+}
+impl<T> ThreadPoolJoinHandle<T> {
+  fn new(handle: Arc<(Mutex<Option<T>>, Condvar)>) -> ThreadPoolJoinHandle<T> {
+    ThreadPoolJoinHandle {
+      handle: handle
+    }
+  }
+  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
+    let &(ref lock, ref cvar) = &*self.handle;
+    let mut value = lock.lock().unwrap();
+    while value.is_none() {
+        value = cvar.wait(value).unwrap();
+    }
+    match value.take() {
+      Some(n) => Ok(n),
+      None => Err(Box::new("no result"))
+    }
+  }
+}
+//-------------------------------------------
+// JoinHandleOption<T> 
+//-------------------------------------------
+enum JoinHandleOption<T> {
+  Thread(ThreadJoinHandle<T>),
+  ThreadPool(ThreadPoolJoinHandle<T>)
+}
 
-pub struct JoinHandle;
-impl JoinHandle {
-  pub fn join(self) {
-    // todo: join on the underlying thread.
+//-------------------------------------------
+// JoinHandleOption<T> 
+//-------------------------------------------
+pub struct JoinHandle<T> {
+  option: JoinHandleOption<T>
+}
+impl<T> JoinHandle<T> {
+  fn new(option: JoinHandleOption<T>) -> JoinHandle<T> {
+    JoinHandle {
+      option: option
+    }
+  }
+  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
+    match self.option {
+      JoinHandleOption::Thread(handle) => handle.join(),
+      JoinHandleOption::ThreadPool(handle) => handle.join()
+    }
   }
 }
 
@@ -45,11 +105,12 @@ impl JoinHandle {
 //-------------------------------------------
 struct ThreadScheduler;
 impl ThreadScheduler {
-  fn spawn<F>(&self, f: F) -> JoinHandle where F: FnOnce() + Send + 'static {
-    thread::spawn(|| {
-      f();
-    });
-    JoinHandle
+  fn spawn<F, T>(&self, f: F) -> JoinHandle<T>
+  where T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static {
+    let option = JoinHandleOption::Thread (
+      ThreadJoinHandle::new(thread::spawn(f))
+    ); JoinHandle::new(option)
   }
 }
 
@@ -65,14 +126,25 @@ impl ThreadPoolScheduler {
       threadpool: ThreadPool::new(bound)
     }
   }
-  fn spawn<F>(&self, f: F) -> JoinHandle 
-    where F: FnOnce() + Send + 'static {
-    self.threadpool.execute(|| {
-      f();
+  
+  fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static {
+    let handle   = Arc::new((Mutex::new(None), Condvar::new()));
+    let clone    = handle.clone();
+    self.threadpool.execute(move || {
+        let result = f();
+        let &(ref lock, ref cvar) = &*clone;
+        let mut value = lock.lock().unwrap();
+        *value = Some(result);
+        cvar.notify_one();  
     });
-    JoinHandle
+    let option = JoinHandleOption::ThreadPool (
+      ThreadPoolJoinHandle::new(handle)
+    ); JoinHandle::new(option)
   }
 }
+
 //-------------------------------------------
 // SchedulerOption<T> 
 //-------------------------------------------
@@ -82,24 +154,34 @@ enum SchedulerOption {
 }
 
 //-------------------------------------------
-// Scheduler<T> 
+// Scheduler
 //-------------------------------------------
 pub struct Scheduler {
   option: SchedulerOption
 }
 impl Scheduler {
-  pub fn new() -> Scheduler {
+  //---------------------------------------------
+  // thread(): thread based scheduler.
+  //--------------------------------------------- 
+  pub fn thread() -> Scheduler {
     Scheduler {
       option: SchedulerOption::Thread(ThreadScheduler)
     }
   }
-  pub fn pool(bound: usize) -> Scheduler {
+  //---------------------------------------------
+  // threadpool(): threadpool based scheduler.
+  //---------------------------------------------
+  pub fn threadpool(bound: usize) -> Scheduler {
     Scheduler {
       option: SchedulerOption::ThreadPool(ThreadPoolScheduler::new(bound))
     }
   }
-  pub fn spawn<F>(&self, f: F) -> JoinHandle where 
-    F: FnOnce() + Send + 'static {
+  //---------------------------------------------
+  // spawn(): spawns new work on this scheduler.
+  //--------------------------------------------- 
+  pub fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static {
     match self.option {
       SchedulerOption::Thread(ref scheduler) 
         => scheduler.spawn(f),
