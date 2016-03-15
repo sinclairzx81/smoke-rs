@@ -32,9 +32,12 @@ use std::sync::{Arc, Mutex, Condvar};
 use threadpool::ThreadPool;
 use std::any::Any;
 
-//-------------------------------------------
-// ThreadJoinHandle<T> 
-//-------------------------------------------
+// future:
+// use std::panic::recover;
+
+///-------------------------------------------
+/// ThreadJoinHandle<T> 
+///-------------------------------------------
 struct ThreadJoinHandle<T> {
     handle: StdJoinHandle<T>
 }
@@ -48,19 +51,22 @@ impl<T> ThreadJoinHandle<T> {
     self.handle.join()
   }
 }
-//-------------------------------------------
-// ThreadPoolJoinHandle<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// ThreadPoolJoinHandle<T> 
+///-------------------------------------------
 struct ThreadPoolJoinHandle<T> {
     handle: Arc<(Mutex<Option<T>>, Condvar)>
 }
 impl<T> ThreadPoolJoinHandle<T> {
   fn new(handle: Arc<(Mutex<Option<T>>, Condvar)>) -> ThreadPoolJoinHandle<T> {
-    ThreadPoolJoinHandle {
-      handle: handle
+      ThreadPoolJoinHandle {
+        handle: handle
+      }
     }
-  }
-  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
+  ///-------------------------------------------
+  /// join() joins this thread back on the caller thread.
+  ///-------------------------------------------  
+  fn join(self) -> Result<T, Box<Any + Send + 'static>> {
     let &(ref lock, ref cvar) = &*self.handle;
     let mut value = lock.lock().unwrap();
     while value.is_none() {
@@ -68,21 +74,21 @@ impl<T> ThreadPoolJoinHandle<T> {
     }
     match value.take() {
       Some(n) => Ok(n),
-      None => Err(Box::new("no result"))
+      None => Err(Box::new("no result."))
     }
   }
 }
-//-------------------------------------------
-// JoinHandleOption<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// JoinHandleOption<T> 
+///-------------------------------------------
 enum JoinHandleOption<T> {
   Thread(ThreadJoinHandle<T>),
   ThreadPool(ThreadPoolJoinHandle<T>)
 }
 
-//-------------------------------------------
-// JoinHandleOption<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// JoinHandleOption<T> 
+///-------------------------------------------
 pub struct JoinHandle<T> {
   option: JoinHandleOption<T>
 }
@@ -92,6 +98,9 @@ impl<T> JoinHandle<T> {
       option: option
     }
   }
+  ///-------------------------------------------
+  /// join() joins this thread back on the caller thread.
+  ///-------------------------------------------    
   pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
     match self.option {
       JoinHandleOption::Thread(handle) => handle.join(),
@@ -100,9 +109,9 @@ impl<T> JoinHandle<T> {
   }
 }
 
-//-------------------------------------------
-// ThreadScheduler<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// ThreadScheduler<T> 
+///-------------------------------------------
 struct ThreadScheduler;
 impl ThreadScheduler {
   fn spawn<F, T>(&self, f: F) -> JoinHandle<T>
@@ -114,9 +123,9 @@ impl ThreadScheduler {
   }
 }
 
-//-------------------------------------------
-// ThreadPoolScheduler<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// ThreadPoolScheduler<T> 
+///-------------------------------------------
 struct ThreadPoolScheduler {
   threadpool: ThreadPool
 }
@@ -126,14 +135,20 @@ impl ThreadPoolScheduler {
       threadpool: ThreadPool::new(bound)
     }
   }
-  
+  ///-------------------------------------------
+  /// spawn() spawns a new thread in this threadpool.
+  ///-------------------------------------------    
   fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static {
     let handle   = Arc::new((Mutex::new(None), Condvar::new()));
     let clone    = handle.clone();
     self.threadpool.execute(move || {
+        // WARNING: panics in this thread can't be
+        // caught until std::panic::recover becomes
+        // stable.
         let result = f();
+        
         let &(ref lock, ref cvar) = &*clone;
         let mut value = lock.lock().unwrap();
         *value = Some(result);
@@ -145,40 +160,43 @@ impl ThreadPoolScheduler {
   }
 }
 
-//-------------------------------------------
-// SchedulerOption<T> 
-//-------------------------------------------
+///-------------------------------------------
+/// SchedulerOption<T> 
+///-------------------------------------------
 enum SchedulerOption {
   Thread(ThreadScheduler),
   ThreadPool(ThreadPoolScheduler)
 }
 
-//-------------------------------------------
-// Scheduler
-//-------------------------------------------
+///-------------------------------------------
+/// Scheduler
+///-------------------------------------------
 pub struct Scheduler {
   option: SchedulerOption
 }
 impl Scheduler {
-  //---------------------------------------------
-  // thread(): thread based scheduler.
-  //--------------------------------------------- 
+  
+  ///---------------------------------------------
+  /// thread(): thread based scheduler.
+  ///--------------------------------------------- 
   pub fn thread() -> Scheduler {
     Scheduler {
       option: SchedulerOption::Thread(ThreadScheduler)
     }
   }
-  //---------------------------------------------
-  // threadpool(): threadpool based scheduler.
-  //---------------------------------------------
-  pub fn threadpool(bound: usize) -> Scheduler {
+  
+  ///---------------------------------------------
+  /// threadpool(): threadpool based scheduler.
+  ///---------------------------------------------
+  pub fn threadpool(threads: usize) -> Scheduler {
     Scheduler {
-      option: SchedulerOption::ThreadPool(ThreadPoolScheduler::new(bound))
+      option: SchedulerOption::ThreadPool(ThreadPoolScheduler::new(threads))
     }
   }
-  //---------------------------------------------
-  // spawn(): spawns new work on this scheduler.
-  //--------------------------------------------- 
+  
+  ///---------------------------------------------
+  /// spawn(): spawns work on this scheduler.
+  ///--------------------------------------------- 
   pub fn spawn<F, T>(&self, f: F) -> JoinHandle<T> where 
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static {
