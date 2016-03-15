@@ -49,7 +49,7 @@ impl<R, T, F: FnOnce(T) -> R> TaskFunc<T> for F {
 //---------------------------------------------------------
 // TaskSender<T> 
 //---------------------------------------------------------
-struct TaskSender<T> {
+pub struct TaskSender<T> {
    sender: SyncSender<T>
 }
 impl<T> TaskSender<T> {

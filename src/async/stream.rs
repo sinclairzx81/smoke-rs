@@ -26,7 +26,6 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-
 use std::sync::mpsc::{SendError};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::mpsc::{sync_channel, SyncSender};
