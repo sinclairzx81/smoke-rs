@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["sinclairzx81 <haydn.developer@gmail.com>"]
 
 [dependencies]
+threadpool = "1.0"

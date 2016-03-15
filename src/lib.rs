@@ -26,4 +26,6 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
+extern crate threadpool;
+
 pub mod async;

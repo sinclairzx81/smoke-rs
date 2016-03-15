@@ -26,10 +26,5 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-pub mod task;
-pub mod stream;
-pub mod schedular;
-
-pub use self::task::Task;
-pub use self::stream::Stream;
-pub use self::schedular::Schedular;
+// todo: implement a task schedular.
+pub struct Schedular;
