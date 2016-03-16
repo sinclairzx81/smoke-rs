@@ -26,15 +26,22 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{ sync_channel, SyncSender};
 use std::sync::mpsc::{ SendError, RecvError };
-use std::thread;
-use std::thread::JoinHandle;
+use super::scheduler::{ Scheduler, Handle};
+
+///---------------------------------------------------------
+/// GLOBAL_SCHEDULER: The default task scheduler (32)
+///---------------------------------------------------------
+lazy_static! {
+    static ref GLOBAL_SCHEDULER: Scheduler = {
+      Scheduler::new(32)
+    };
+}
 
 //---------------------------------------------------------
 // TaskFunc
 //---------------------------------------------------------
-
 trait TaskFunc<T> {
     type Output;
     fn call(self: Box<Self>, value:T) -> Self::Output;
@@ -67,19 +74,51 @@ impl<T> TaskSender<T> {
 // Task<T, E> 
 //---------------------------------------------------------
 pub struct Task<T> {
-    func: Box<TaskFunc<TaskSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
+    scheduler : Scheduler,
+    func      : Box<TaskFunc<TaskSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
 }
-impl <T> Task<T> {
+impl <T> Task<T> where T: Send + 'static {
     
     //---------------------------------------------------------
-    // new() creates a new task.
+    // scheduled() creates a tasked on this scheduler.
     //---------------------------------------------------------   
-    pub fn new<F>(func: F) -> Task<T>
+    pub fn scheduled<F>(scheduler: Scheduler, func: F) -> Task<T>
         where F: FnOnce(TaskSender<T>) -> Result<(), SendError<T>> + Send + 'static {
         Task {
-            func: Box::new(func)
+            scheduler: scheduler,
+            func     : Box::new(func)
         }
     }
+    
+    //---------------------------------------------------------
+    // new() creates a scheduled task.
+    //---------------------------------------------------------  
+    pub fn new<F>(func: F) -> Task<T> 
+      where F: FnOnce(TaskSender<T>) -> Result<(), SendError<T>> + Send + 'static {
+        Task {
+            scheduler: GLOBAL_SCHEDULER.clone(),
+            func     : Box::new(func)
+        }
+    }
+    
+    //---------------------------------------------------------
+    // app() creates a scheduled task.
+    //--------------------------------------------------------- 
+    pub fn all(tasks: Vec<Task<T>>) -> Task<Vec<T>> {
+        Task::<Vec<T>>::new(move |sender| {
+            let result:Result<Vec<_>, RecvError> 
+                = tasks.into_iter()
+                       .map(|task| task.async(|result| result))
+                       .collect::<Vec<_>>()
+                       .into_iter()
+                       .map(|handle| handle.wait().unwrap())
+                       .collect();
+            match result {
+              Ok (value) => sender.send(value),
+              Err(error) => panic!(error)
+            }
+        })
+    }    
     
     //---------------------------------------------------------
     // sync() executes this task synchronously.
@@ -92,18 +131,15 @@ impl <T> Task<T> {
             Ok(_)  => receiver.recv()
         }
     }
-}
-
-//---------------------------------------------------------
-// Task<T, E> for Send + 'static
-//---------------------------------------------------------
-impl<T> Task<T> where T: Send + 'static {
     
     //---------------------------------------------------------
     // async() executes this task asynchronously.
     //--------------------------------------------------------- 
-    pub fn async(self) -> JoinHandle<T> {
-        thread::spawn(move || self.sync().unwrap())
+    pub fn async<F, U>(self, func: F) -> Handle<U>
+        where U: Send + 'static,
+              F: FnOnce(Result<T, RecvError>) -> U + Send + 'static {
+        let scheduler = self.scheduler.clone();
+        scheduler.run(move || func(self.sync()))
     }
     
     //---------------------------------------------------------
@@ -112,25 +148,27 @@ impl<T> Task<T> where T: Send + 'static {
     pub fn then<U, F>(self, func: F) -> Task<U> where 
         U : Send + 'static,
         F : FnOnce(T) -> Task<U> + Send + 'static {
-      func(self.sync().unwrap())
-    }
-    
+          Task::<U>::new(move |sender| {
+             let result = func(self.sync().unwrap());
+             sender.send(result.sync().unwrap())
+          })
+    } 
+}
+
+//------------------------------------------
+// extensions
+//------------------------------------------
+use std::thread;
+use std::time::Duration;
+
+impl Task<()> {
     //---------------------------------------------------------
-    // all() runs the given tasks in parallel.
+    // delay() creates a delay with the given timeout.
     //---------------------------------------------------------
-    pub fn all(tasks: Vec<Task<T>>) -> Task<Vec<T>> {
-        Task::<Vec<T>>::new(move |sender| {
-            let result:Result<Vec<_>, RecvError> 
-                = tasks.into_iter()
-                       .map(|task| thread::spawn(|| task.sync() ) )
-                       .collect::<Vec<_>>()
-                       .into_iter()
-                       .map(|handle| handle.join().unwrap())
-                       .collect();
-            match result {
-              Ok (value) => sender.send(value),
-              Err(error) => panic!(error)
-            }
-        })
+    pub fn delay(millis: u64) -> Task<()> {
+      Task::new(move |sender| {
+        thread::sleep(Duration::from_millis(millis));
+        sender.send(())
+      })
     }
 }

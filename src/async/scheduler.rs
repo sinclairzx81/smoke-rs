@@ -26,53 +26,23 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-use std::thread;
-use std::thread::JoinHandle as StdJoinHandle;
-use std::sync::{Arc, Mutex, Condvar};
 use threadpool::ThreadPool;
+use std::sync::{Arc, Mutex, Condvar};
 use std::any::Any;
 
-// future:
-// use std::panic::recover;
-
 ///-------------------------------------------
-/// ThreadJoinHandle<T> 
+/// Handle<T> 
 ///-------------------------------------------
-#[derive(Clone)]
-struct ThreadJoinHandle<T> {
-    handle: Arc<Mutex<Option<StdJoinHandle<T>>>>
+pub struct Handle<T> {
+    handle: Arc<(Mutex<Option<T>>, Condvar)>
 }
-impl<T> ThreadJoinHandle<T> {
-  fn new(handle: Arc<Mutex<Option<StdJoinHandle<T>>>>) -> ThreadJoinHandle<T> {
-    ThreadJoinHandle {
+impl<T> Handle<T> {
+  fn new(handle: Arc<(Mutex<Option<T>>, Condvar)>) -> Handle<T> {
+    Handle {
       handle: handle
     }
   }
-  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
-    let mut option = self.handle.lock().unwrap();
-    match option.take() {
-      Some(handle) => handle.join(),
-      None => panic!()
-    }
-  }
-}
-///-------------------------------------------
-/// ThreadPoolJoinHandle<T> 
-///-------------------------------------------
-#[derive(Clone)]
-struct ThreadPoolJoinHandle<T> {
-    handle: Arc<(Mutex<Option<T>>, Condvar)>
-}
-impl<T> ThreadPoolJoinHandle<T> {
-  fn new(handle: Arc<(Mutex<Option<T>>, Condvar)>) -> ThreadPoolJoinHandle<T> {
-      ThreadPoolJoinHandle {
-        handle: handle
-      }
-    }
-  ///-------------------------------------------
-  /// join() joins this thread back on the caller thread.
-  ///-------------------------------------------  
-  fn join(self) -> Result<T, Box<Any + Send + 'static>> {
+  pub fn wait(self) -> Result<T, Box<Any + Send + 'static>> {
     let &(ref lock, ref cvar) = &*self.handle;
     let mut value = lock.lock().unwrap();
     while value.is_none() {
@@ -80,146 +50,35 @@ impl<T> ThreadPoolJoinHandle<T> {
     }
     match value.take() {
       Some(n) => Ok(n),
-      None => Err(Box::new("no result."))
+      None    => Err(Box::new("no result."))
     }
-  }
+  } 
 }
-///-------------------------------------------
-/// JoinHandleOption<T> 
-///-------------------------------------------
-#[derive(Clone)]
-enum JoinHandleOption<T> {
-  Thread(ThreadJoinHandle<T>),
-  ThreadPool(ThreadPoolJoinHandle<T>)
-}
-
-///-------------------------------------------
-/// JoinHandleOption<T> 
-///-------------------------------------------
-#[derive(Clone)]
-pub struct JoinHandle<T> {
-  option: JoinHandleOption<T>
-}
-impl<T> JoinHandle<T> {
-  fn new(option: JoinHandleOption<T>) -> JoinHandle<T> {
-    JoinHandle {
-      option: option
-    }
-  }
-  ///-------------------------------------------
-  /// join() joins this thread back on the caller thread.
-  ///-------------------------------------------    
-  pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
-    match self.option {
-      JoinHandleOption::Thread(handle) => handle.join(),
-      JoinHandleOption::ThreadPool(handle) => handle.join()
-    }
-  }
-}
-
-///-------------------------------------------
-/// ThreadScheduler<T> 
-///-------------------------------------------
-#[derive(Clone)]
-struct ThreadScheduler;
-impl ThreadScheduler {
-  ///---------------------------------------------
-  /// run(): queues work on this scheduler.
-  ///---------------------------------------------   
-  fn run<F, T>(&self, f: F) -> JoinHandle<T>
-  where T: Send + 'static,
-        F: FnOnce() -> T + Send + 'static {
-    let option = JoinHandleOption::Thread (
-      ThreadJoinHandle::new(Arc::new(Mutex::new(Some(thread::spawn(f)))))
-    ); JoinHandle::new(option)
-  }
-}
-
-///-------------------------------------------
-/// ThreadPoolScheduler<T> 
-///-------------------------------------------
-#[derive(Clone)]
-struct ThreadPoolScheduler {
-  threadpool: ThreadPool
-}
-impl ThreadPoolScheduler {
-  fn new(bound:usize) -> ThreadPoolScheduler {
-    ThreadPoolScheduler {
-      threadpool: ThreadPool::new(bound)
-    }
-  }
-  ///---------------------------------------------
-  /// run(): queues work on this scheduler.
-  ///---------------------------------------------   
-  fn run<F, T>(&self, f: F) -> JoinHandle<T> where 
-    T: Send + 'static,
-    F: FnOnce() -> T + Send + 'static {
-    let handle   = Arc::new((Mutex::new(None), Condvar::new()));
-    let clone    = handle.clone();
-    self.threadpool.execute(move || {
-        // WARNING: panics in this thread can't be
-        // caught until std::panic::recover becomes
-        // stable.
-        let result = f();
-        
-        let &(ref lock, ref cvar) = &*clone;
-        let mut value = lock.lock().unwrap();
-        *value = Some(result);
-        cvar.notify_one();  
-    });
-    let option = JoinHandleOption::ThreadPool (
-      ThreadPoolJoinHandle::new(handle)
-    ); JoinHandle::new(option)
-  }
-}
-
-///-------------------------------------------
-/// SchedulerOption<T> 
-///-------------------------------------------
-#[derive(Clone)]
-enum SchedulerOption {
-  Thread(ThreadScheduler),
-  ThreadPool(ThreadPoolScheduler)
-}
-
 ///-------------------------------------------
 /// Scheduler
 ///-------------------------------------------
 #[derive(Clone)]
 pub struct Scheduler {
-  option: SchedulerOption
+  threadpool: Arc<Mutex<ThreadPool>>
 }
 impl Scheduler {
-  
-  ///---------------------------------------------
-  /// thread(): thread based scheduler.
-  ///--------------------------------------------- 
-  pub fn thread() -> Scheduler {
+  pub fn new(threads:usize) -> Scheduler {
     Scheduler {
-      option: SchedulerOption::Thread(ThreadScheduler)
+      threadpool: Arc::new(Mutex::new(ThreadPool::new(threads)))
     }
   }
-  
-  ///---------------------------------------------
-  /// threadpool(): threadpool based scheduler.
-  ///---------------------------------------------
-  pub fn threadpool(threads: usize) -> Scheduler {
-    Scheduler {
-      option: SchedulerOption::ThreadPool(ThreadPoolScheduler::new(threads))
-    }
-  }
-  
-  ///---------------------------------------------
-  /// run(): queues work on this scheduler.
-  ///--------------------------------------------- 
-  pub fn run<F, T>(&self, f: F) -> JoinHandle<T> where 
-    T: Send + 'static,
-    F: FnOnce() -> T + Send + 'static {
-    match self.option {
-      SchedulerOption::Thread(ref scheduler) 
-        => scheduler.run(f),
-      SchedulerOption::ThreadPool(ref scheduler) 
-        => scheduler.run(f)
-    }
-  }
+  pub fn run<T: Send + 'static, F:FnOnce() -> T + Send + 'static>(&self, func: F) -> Handle<T> {
+    let handle     = Arc::new((Mutex::new(None), Condvar::new()));
+    let clone      = handle.clone();
+    let threadpool = self.threadpool.lock().unwrap();
+    threadpool.execute(move || {
+        // WARNING: panics in this thread can't be caught
+        // until std::panic::recover becomes stable.
+        let result = func();
+        let &(ref lock, ref cvar) = &*clone;
+        let mut value = lock.lock().unwrap();
+        *value = Some(result);
+        cvar.notify_one();
+    }); Handle::new(handle)
+  }  
 }

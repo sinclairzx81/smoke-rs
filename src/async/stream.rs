@@ -78,7 +78,7 @@ impl<T> StreamSender<T> where T: Send + 'static {
       option: StreamOption::Sync(sender) 
     }
   }
-
+  
   pub fn send(&self, value:T) -> Result<(), SendError<T>> {
     match self.option {
       StreamOption::Async(ref sender) => sender.send(value),
@@ -89,8 +89,10 @@ impl<T> StreamSender<T> where T: Send + 'static {
 impl<T> Clone for StreamSender<T> where T: Send + 'static {
   fn clone(&self) -> StreamSender<T> {
     match self.option {
-      StreamOption::Async(ref sender) => StreamSender::async(sender.clone()),
-      StreamOption::Sync (ref sender) => StreamSender::sync(sender.clone())
+      StreamOption::Async(ref sender) 
+        => StreamSender::async(sender.clone()),
+      StreamOption::Sync (ref sender) 
+        => StreamSender::sync(sender.clone())
     }
   }
 }
@@ -176,7 +178,7 @@ impl<T> Stream<T> where T: Send + 'static {
                     .last()
                     .unwrap())
   }
-
+  
   //---------------------------------------------------------
   // fold() reduces this stream to a single value.
   //---------------------------------------------------------  
@@ -186,7 +188,7 @@ impl<T> Stream<T> where T: Send + 'static {
         sender.send(self.sync(0)
                         .into_iter()
                         .fold(init, func)))
-    }
+  }
     
     //---------------------------------------------------------
     // sync() begins reading from this stream with a bound.

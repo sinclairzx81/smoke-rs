@@ -74,15 +74,21 @@ point in the future.
 mod smoke;
 use smoke::async::Task;
 
+fn helloworld() -> Task<&'static str> {
+  Task::new(move |sender| {
+    let _ = Task::delay(1000).async(move |_| {
+      sender.send("hello world")
+    }).wait(); Ok(())
+  })
+}
+
 fn main() {
-    let task = Task::new(|sender| {
-        println!("inside the task");
-        sender.send(123)
-    });
     
-    let handle = task.async();
-    // do other work...
-    println!("{}", handle.join().unwrap());
+    helloworld().async(|result| {
+    
+      println!("{}", result.unwrap());
+      
+    }).wait();
 }
 ```
 <a name='run_tasks_in_parallel'></a>

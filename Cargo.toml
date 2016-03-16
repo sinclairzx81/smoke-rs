@@ -5,3 +5,4 @@ authors = ["sinclairzx81 <haydn.developer@gmail.com>"]
 
 [dependencies]
 threadpool = "1.0"
+lazy_static = "0.1.*"

@@ -30,6 +30,6 @@ pub mod task;
 pub mod stream;
 pub mod scheduler;
 
-pub use self::scheduler::{Scheduler, JoinHandle};
+pub use self::scheduler::{Scheduler, Handle};
 pub use self::task::{Task, TaskSender};
 pub use self::stream::{Stream, StreamSender};
