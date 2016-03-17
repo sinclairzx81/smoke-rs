@@ -1,6 +1,6 @@
 #smoke-rs
 
-Task based async for Rust.
+####Asynchronous programming in Rust with Tasks and Streams.
 
 ```rust
 fn hello() -> Task<&'static str> {
