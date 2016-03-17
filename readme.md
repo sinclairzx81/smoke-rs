@@ -1,6 +1,6 @@
 #smoke-rs
 
-#### Asynchronous programming in Rust with Tasks
+#### A lightweight async Task and Stream library for Rust
 
 ```rust
 fn hello() -> Task<&'static str> {
@@ -12,20 +12,25 @@ fn hello() -> Task<&'static str> {
 
 ## overview
 
-This library provides task / stream primitives to orchestrate concurrency in Rust. 
+Smoke is a lightweight Task and Stream library for Rust. The library aims to help simplify 
+asynchronous, concurrent and parallel programming in Rust by providing familar primitives 
+seen in languages like C# and JavaScript. 
+
+Smoke's primary motive is to strike a good balance between Rust's thread safe semantics and the
+ease of use of Tasks.
 
 * [Task&lt;T&gt;](#task)
-  * [Creating Tasks](#creating_tasks)
-  * [Run Tasks Synchronously](#run_tasks_synchronously)
-  * [Run Tasks Asynchronously](#run_tasks_asynchronously)
-  * [Run Tasks in Parallel](#run_tasks_in_parallel)
-  * [Composing Tasks](#composing_tasks)
-  * [Scheduling Tasks](#scheduling_tasks)
+  * [Creating](#creating_tasks)
+  * [Run Sync](#run_sync)
+  * [Run Async](#run_async)
+  * [Run in Parallel](#run_parallel)
+  * [Composing](#composing)
+  * [Scheduling](#scheduling)
 * [Stream&lt;T&gt;](#stream)
-  * [Creating Streams](#creating_streams)
-  * [Reading Streams](#reading_streams)
-  * [Merging Streams](#merging_streams)
-  * [Streams Operators](#stream_operators)
+  * [Creating](#creating_streams)
+  * [Reading](#reading_streams)
+  * [Merging](#merging_streams)
+  * [Operators](#stream_operators)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
@@ -226,6 +231,28 @@ fn main() {
   });
 }
 ```
+
+<a name="scheduling" />
+
+By default, all tasks are scheduled to run on a default background threadpool. However, sometimes 
+it may be desirable to create tasks on threadpools outside of the default. 
+
+The code below creates a new scheduler with a threadpool size of 4. Tasks can be created to use custom
+schedulers with the .scheduled() function.
+
+```rust
+use smoke::async::{Task, Scheduler};
+
+fn main() {
+  let scheduler = Scheduler::new(4);
+  let task = Task::scheduled(scheduler, |sender| {
+    sender.send(100)
+  });
+  
+  println!("{}", task.wait().unwrap());
+}
+```
+
 
 <a name='reading_streams'></a>
 ### Reading Streams
