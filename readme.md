@@ -1,6 +1,6 @@
 #smoke-rs
 
-Task based asynchronous programming for Rust.
+Task based async programming for Rust.
 
 ```rust
 use smoke::async::Task;
