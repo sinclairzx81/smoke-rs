@@ -3,17 +3,9 @@
 Task based async for Rust.
 
 ```rust
-use smoke::async::Task;
-
 fn hello() -> Task<&'static str> {
   Task::new(|sender| {
     sender.send("hello world!!")
-  })
-}
-
-fn main() {
-  hello().async(|result| {
-    println!("{:?}", result);
   })
 }
 ```
@@ -70,10 +62,10 @@ use smoke::async::Task;
 
 fn main() {
     let task = Task::new(|sender| {
-        
         sender.send("hello from task")
     });
-    // blocking
+    
+    // blocking..
     println!("{}", task.sync().unwrap());
 }
 ```
@@ -96,7 +88,6 @@ fn main() {
     });
     
     task.async(|result| {
-      // inside thread ..
       println!("{}", result.unwrap());
     });
     // program ends...
@@ -120,10 +111,7 @@ fn main() {
     });
     
     // sometime later...
-    
-    let result = handle.wait(); 
-    
-    println!("{}", result.unwrap());
+    println!("{}", handle.wait().unwrap());
 }
 ```
 <a name='run_tasks_in_parallel'></a>
