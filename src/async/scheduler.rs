@@ -26,7 +26,9 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-use threadpool::ThreadPool;
+extern crate threadpool;
+
+use self::threadpool::ThreadPool;
 use std::sync::{Arc, Mutex, Condvar};
 use std::any::Any;
 

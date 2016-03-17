@@ -7,26 +7,26 @@ fn create() {
 }
 
 #[test]
-fn sync() {
+fn wait() {
   let task = Task::new(|sender| { sender.send(10) });
-  assert_eq!(task.sync().unwrap(), 10);
+  assert_eq!(task.wait().unwrap(), 10);
 }
 
 #[test]
-fn async() {
+fn await() {
   let task = Task::new(|sender| { sender.send(10) });
   assert_eq!(task.async(|result| result.unwrap()).wait().unwrap(), 10);
 }
 
 #[test]
-fn sync_then() {
+fn wait_then() {
   let task = Task::new(|sender| { sender.send(10) })
                  .then(|n| Task::new(move |sender| sender.send(n + 10)));
-  assert_eq!(task.sync().unwrap(), 20);
+  assert_eq!(task.wait().unwrap(), 20);
 }
 
 #[test]
-fn async_then() {
+fn await_then() {
   let task = Task::new(|sender| { sender.send(10) })
                 .then(|n| Task::new(move |sender| sender.send(n + 10)));
   assert_eq!(task.async(|result| result.unwrap()).wait().unwrap(), 20);
@@ -35,34 +35,34 @@ fn async_then() {
 
 #[test]
 #[should_panic]
-fn sync_no_result_match() {
+fn wait_no_result_match() {
   let task = Task::<i32>::new(|_| { Ok(()) });
-  task.sync().unwrap();
+  task.wait().unwrap();
 }
 
 #[test]
 #[should_panic]
-fn sync_no_result_unwrap() {
+fn wait_no_result_unwrap() {
   let task = Task::<i32>::new(|_| { Ok(()) });
-  task.sync().unwrap();
+  task.wait().unwrap();
 }
 
 /* 
-task not completing on async no result. need to 
+task not completing on await no result. need to 
 either detect panic, or check the drop on the 
 sender.  
 #[test]
 #[should_panic]
-fn async_no_result_match() {
+fn await_no_result_match() {
   let task = Task::<i32>::new(|_| { Ok(()) });
-  task.async(|result| result.unwrap()).wait().unwrap();
+  task.await(|result| result.unwrap()).wait().unwrap();
 }
 */
 /*
 #[test]
 #[should_panic]
-fn async_no_result_unwrap() {
+fn await_no_result_unwrap() {
   let task = Task::<i32>::new(|_| { Ok(()) });
-  task.async(|result| result.unwrap()).wait().unwrap();
+  task.await(|result| result.unwrap()).wait().unwrap();
 }
 */

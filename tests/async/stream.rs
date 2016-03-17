@@ -113,5 +113,5 @@ fn fold() {
     })
   }
   let task = stream().fold(0, |p, c| p + c);
-  assert_eq!(3, task.sync().unwrap());
+  assert_eq!(3, task.wait().unwrap());
 }

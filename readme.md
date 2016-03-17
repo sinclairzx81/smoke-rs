@@ -1,10 +1,26 @@
 #smoke-rs
 
-Concurrency primitives for the Rust programming language.
+Task based asynchronous programming for Rust.
+
+```rust
+use smoke::async::Task;
+
+fn hello() -> Task<&'static str> {
+  Task::new(|sender| {
+    sender.send("hello world!!")
+  })
+}
+
+fn main() {
+  hello().async(|result| {
+    println!("{:?}", result);
+  })
+}
+```
 
 ## overview
 
-This library provides task / stream primitives to help orchestrate concurrency in Rust.  
+This library provides task / stream primitives to orchestrate concurrency in Rust. 
 
 * [Task&lt;T&gt;](#task)
   * [Creating Tasks](#creating_tasks)
@@ -12,32 +28,29 @@ This library provides task / stream primitives to help orchestrate concurrency i
   * [Run Tasks Asynchronously](#run_tasks_asynchronously)
   * [Run Tasks in Parallel](#run_tasks_in_parallel)
   * [Composing Tasks](#composing_tasks)
+  * [Scheduling Tasks](#scheduling_tasks)
 * [Stream&lt;T&gt;](#stream)
   * [Creating Streams](#creating_streams)
   * [Reading Streams](#reading_streams)
   * [Combining Streams](#combining_streams)
   * [Composing Streams](#composing_streams)
-* [Examples](#examples)
-  * [Processing Files](#processing_files)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
 
-A Task encapsulates a single asynchronous operation. 
+A Task encapsulates a asynchronous operation. 
 
 <a name='creating_tasks'></a>
 ### Creating Tasks
 
-The following will create a Task&lt;i32&gt;. The body of this task will not execute
-until a caller calls either calls .sync() or .async() to obtain the result.
+The following will create a Task&lt;i32&gt;. The value for this task is 
+given by the call to sender.send() function.
 
 ```rust
-mod smoke;
 use smoke::async::Task;
 
 fn main() {
     let task = Task::new(|sender| {
-        println!("inside the task");
         sender.send(123)
     });
 }
@@ -46,19 +59,21 @@ fn main() {
 <a name='run_tasks_synchronously'></a>
 ### Run Tasks Synchronously
 
-Tasks can be run synchronously with the .sync() function. The .sync() 
-function returns a Result&lt;T, RecvError&gt; containing the result.
+To run a task synchronously, use the .wait() function. The .wait() 
+function will block the current thread and return a Result&lt;T, RecvError&gt; 
+when it can.
+
+The following synchronously waits on a Task.
 
 ```rust
-mod smoke;
 use smoke::async::Task;
 
 fn main() {
     let task = Task::new(|sender| {
-        println!("inside the task");
-        sender.send(123)
+        
+        sender.send("hello from task")
     });
-    
+    // blocking
     println!("{}", task.sync().unwrap());
 }
 ```
@@ -67,39 +82,56 @@ fn main() {
 ### Run Tasks Asynchronously
 
 Tasks can be run asynchronously with the .async() function. The .async() 
-function returns a JoinHandle&lt;T&gt; for the caller to .join() at some
-point in the future.
+function will pass a Result&lt;T, RecvError&gt; into the closure provided
+and return a wait handle to the caller. 
+
+The following runs a Task asynchronously.
 
 ```rust
-mod smoke;
 use smoke::async::Task;
 
-fn helloworld() -> Task<&'static str> {
-  Task::new(move |sender| {
-    let _ = Task::delay(1000).async(move |_| {
-      sender.send("hello world")
-    }).wait(); Ok(())
-  })
+fn main() {
+    let task = Task::new(|sender| {
+        sender.send("hello from task")
+    });
+    
+    task.async(|result| {
+      // inside thread ..
+      println!("{}", result.unwrap());
+    });
+    // program ends...
 }
+```
+The .async() function can returns a wait handle the caller can use to
+wait for the async operation to complete. In addition, it may also return
+results to the calling thread..
+
+```rust
+use smoke::async::Task;
 
 fn main() {
+    let task = Task::new(|sender| {
+        sender.send("hello from task")
+    });
     
-    helloworld().async(|result| {
-    
+    let result = task.async(|result| {
       println!("{}", result.unwrap());
-      
-    }).wait();
+      "hello from closure"
+    }).wait(); 
+    
+    println!("{}", result.unwrap());
 }
 ```
 <a name='run_tasks_in_parallel'></a>
 ### Run Tasks in Parallel
 
-Tasks can be run in parallel by calling Task::all(). The all() method wraps the inner tasks in a outer task
-that the caller can use to obtain the results. In this regard, a vector of Task&lt;T, E&gt; will map to a new
-task of type Task&lt;Vec&lt;T&gt;, E&gt;.
+Tasks can be run in parallel by with the .all() function. The all() function accepts a vector
+of type Vec&lt;Task&lt;T&gt;&gt; and gives back a new task of type Task&lt;Vec&lt;T&gt;&gt; which
+contains the results for each task given.
+
+The following demonstrates running tasks in parallel.
 
 ```rust
-mod smoke;
 use smoke::async::Task;
 
 fn add(a: i32, b: i32) -> Task<i32> {
@@ -122,31 +154,60 @@ fn main() {
 <a name='composing_tasks'></a>
 ### Composing Tasks
 
-Tasks can be composed into larger computations with the 
-.then() function. The .then() function is similar to a .map() function
-in the regard it allows tasks to be mapped into other tasks. The 
-result is a new task that callers can use to execute the computation.
+Tasks can be composed with the .then() function. Tasks chained
+with the .then() function will result in sequential execution of the 
+tasks in the chain. 
+
+The .then() function accepts a task of type Task&lt;T&gt; and returns a new task
+of type Task&lt;U&gt; which allows a caller to optionally map the 
+original task to a new type. 
+
+The following demostrates some basic composition.
+
 
 ```rust
-mod smoke;
 use smoke::async::Task;
 
+// simple add function.
 fn add(a: i32, b: i32) -> Task<i32> {
   Task::new(move |sender| {
     sender.send(a + b)
   })
 }
-
+// simple format function.
+use std::fmt::Debug;
+fn format<T>(t: T) -> Task<String> where
+   T:Debug + Send + 'static {
+   Task::new(move |sender| {
+      let n = format!("result is: {:?}", t);
+      sender.send(n)
+   })
+}
 fn main() {
-   let value =  add(1, 2)
-                  .then(|n| add(n, n+1))
-                  .then(|n| add(n, n+1))
-                  .then(|n| add(n, n+1))
-                  .then(|n| add(n, n+1))
-                  .sync();
-                              
-   // 63
-   println!("{:?}", value.unwrap());
+   
+   // add two numbers
+   let result = add(1, 2).wait();
+   println!("{:?}", result.unwrap()); 
+   
+   // wait 1 second.
+   // add two numbers.
+   let result = Task::delay(1000)
+                .then(|_| add(10, 20))
+                .wait();
+                
+   println!("{:?}", result.unwrap()); 
+              
+   // wait 1 second.
+   // add two numbers.
+   // add 3.
+   // format.
+   let result = Task::delay(1000)
+                .then(|_|   add(100, 200))
+                .then(|res| add(res.unwrap(), 3))
+                .then(|res| format(res.unwrap()))
+                .wait();
+   
+   println!("{:?}", result.unwrap());
 }
 ```
 
@@ -166,7 +227,6 @@ expects a Result&lt;(), SendError&gt; result which can be obtain from the sender
 The stream ends once this closure finishes.
 
 ```rust
-mod smoke;
 use smoke::async::Stream;
 
 fn main() {
@@ -195,7 +255,6 @@ Calling .sync() or .async() on a stream returns a Receiver&lt;T&gt; a caller can
 to iterate elements. 
 
 ```rust
-mod smoke;
 use smoke::async::Stream;
 
 // creates a stream of numbers.
@@ -223,7 +282,6 @@ Multiple streams of the same type can be merged into a single stream. The follow
 distinct streams (numbers and words), merges them into a single stream and reads.
 
 ```rust
-mod smoke;
 use smoke::async::Stream;
 
 #[derive(Debug)]
@@ -276,7 +334,6 @@ can use .map() .filter() and .fold() to map and modify the stream
 prior to calling .sync() or .async() to read the stream.
 
 ```rust
-mod smoke;
 use smoke::async::Stream;
 
 fn numbers() -> Stream<i32> {
@@ -318,67 +375,5 @@ fn main() {
       Item::Number(number) => println!("number: {:?}", number)
     }
   }
-}
-```
-
-<a name='examples'></a>
-## Examples
-
-<a name='processing_files'></a>
-### Processing Files
-
-The program below will demonsrates a simple file processor using Tasks and Streams. The filestream()
-function will opens a file as a Stream, scan() scans the files bytes and totals the number of bytes read, given
-as a Task.
-
-```rust
-mod smoke;
-use smoke::async::{Task, Stream};
-use std::fs::File;
-use std::io::prelude::*;
-
-//------------------------------------------------
-// filestream(): streams the bytes in this file.
-//------------------------------------------------
-fn filestream(filename: &'static str) -> Stream<(usize, [u8; 16384])> {
-  let mut file = File::open(filename).unwrap();
-  Stream::new(move |sender| {
-    println!("filestream: {}", filename);
-    loop {
-      let mut buf = [0; 16384];
-      let size = file.read(&mut buf).unwrap();
-      if size > 0 {
-        try!(sender.send((size, buf)));
-      } else {
-        break;
-      }
-    } Ok(())
-  })
-}
-
-//--------------------------------------
-// scan(): scan and count bytes..
-//--------------------------------------
-fn scan(filename: &'static str) -> Task<usize> {
-  Task::new(move |sender| {
-    println!("scan: {}", filename);
-    let mut count = 0;
-    for (size, _) in filestream(filename).sync(0) {
-      count = count + size;
-    } sender.send(count)
-  })
-}
-
-fn main() {
-  println!("begin");
-  let result = Task::all(vec![
-    scan("file1.dat"),
-    scan("file2.dat"),
-    scan("file3.dat"),
-    scan("file4.dat"),
-    scan("file5.dat")
-    // ... more
-  ]).sync().unwrap();
-  println!("results: {:?}", result);
 }
 ```
