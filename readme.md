@@ -102,9 +102,9 @@ fn main() {
     // program ends...
 }
 ```
-The .async() function can returns a wait handle the caller can use to
-wait for the async operation to complete. In addition, it may also return
-results to the calling thread..
+The .async() function returns a handle which the caller can use
+to wait for completion. Results of the async closure can be obtained
+on the handle. 
 
 ```rust
 use smoke::async::Task;
@@ -114,10 +114,14 @@ fn main() {
         sender.send("hello from task")
     });
     
-    let result = task.async(|result| {
+    let handle = task.async(|result| {
       println!("{}", result.unwrap());
       "hello from closure"
-    }).wait(); 
+    });
+    
+    // sometime later...
+    
+    let result = handle.wait(); 
     
     println!("{}", result.unwrap());
 }
