@@ -1,51 +1,39 @@
 extern crate smoke;
 
-use smoke::async::Task;
+use smoke::async::Stream;
 
-// simple add function.
-fn add(a: i32, b: i32) -> Task<i32> {
-  Task::new(move |sender| {
-    sender.send(a + b)
-  })
+fn numbers() -> Stream<i32> {
+  Stream::new(|sender| {
+    try! (sender.send(1) );
+    try! (sender.send(2) );
+    try! (sender.send(3) );
+    sender.send(4)
+  }) 
 }
-// simple format function.
+
 use std::fmt::Debug;
-fn format<T>(t: T) -> Task<String> where
-   T:Debug + Send + 'static {
-   Task::new(move |sender| {
-      let n = format!("result is: {:?}", t);
-      sender.send(n)
-   })
+fn read<T: Debug + Send + 'static>(stream: Stream<T>) {
+    for n in stream.read(0) {
+      println!("{:?}", n);
+    }
 }
 
-fn hello() -> Task<&'static str> {
-  Task::new(|sender| {
-    sender.send("hello world!!")
-  })
-}
 fn main() {
-   
-   // add two numbers
-   let result = add(1, 2).wait();
-   println!("{:?}", result.unwrap()); 
-   
-   // wait 1 second.
-   // add two numbers.
-   let result = Task::delay(1000)
-                .then(|_| add(10, 20))
-                .wait();
-                
-   println!("{:?}", result.unwrap()); 
-              
-   // wait 1 second.
-   // add two numbers.
-   // add 3.
-   // format.
-   let result = Task::delay(1000)
-                .then(|_|   add(100, 200))
-                .then(|res| add(res.unwrap(), 3))
-                .then(|res| format(res.unwrap()))
-                .wait();
-   
-   println!("{:?}", result.unwrap());
+  // filter
+  read(numbers().filter(|n| n % 2 == 0));
+  // map
+  read(numbers().map(|n| format!("num: {}", n)));
+  // fold
+  println!("{}", 
+    numbers().fold(0, |p, c| p + c)
+             .wait()
+             .unwrap());
+  // everything
+  println!("{}", 
+    numbers().filter(|n| n % 2 == 0)
+             .map(|n| format!("{}", n))
+             .fold(String::new(), |p, c| 
+                    format!("{} {} and", p, c))
+             .wait()
+             .unwrap());
 }

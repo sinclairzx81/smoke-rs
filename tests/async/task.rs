@@ -21,14 +21,14 @@ fn await() {
 #[test]
 fn wait_then() {
   let task = Task::new(|sender| { sender.send(10) })
-                 .then(|n| Task::new(move |sender| sender.send(n + 10)));
+                 .then(|n| Task::new(move |sender| sender.send(n.unwrap() + 10)));
   assert_eq!(task.wait().unwrap(), 20);
 }
 
 #[test]
-fn await_then() {
+fn async_then() {
   let task = Task::new(|sender| { sender.send(10) })
-                .then(|n| Task::new(move |sender| sender.send(n + 10)));
+                .then(|n| Task::new(move |sender| sender.send(n.unwrap() + 10)));
   assert_eq!(task.async(|result| result.unwrap()).wait().unwrap(), 20);
 }
 
@@ -46,23 +46,3 @@ fn wait_no_result_unwrap() {
   let task = Task::<i32>::new(|_| { Ok(()) });
   task.wait().unwrap();
 }
-
-/* 
-task not completing on await no result. need to 
-either detect panic, or check the drop on the 
-sender.  
-#[test]
-#[should_panic]
-fn await_no_result_match() {
-  let task = Task::<i32>::new(|_| { Ok(()) });
-  task.await(|result| result.unwrap()).wait().unwrap();
-}
-*/
-/*
-#[test]
-#[should_panic]
-fn await_no_result_unwrap() {
-  let task = Task::<i32>::new(|_| { Ok(()) });
-  task.await(|result| result.unwrap()).wait().unwrap();
-}
-*/

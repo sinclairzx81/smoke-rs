@@ -4,7 +4,7 @@ smoke-rs
 
 The MIT License (MIT)
 
-Copyright (c) 2015 Haydn Paterson (sinclair) <haydn.developer@gmail.com>
+Copyright (c) 2016 Haydn Paterson (sinclair) <haydn.developer@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,4 +32,4 @@ pub mod scheduler;
 
 pub use self::scheduler::{Scheduler, Handle};
 pub use self::task::{Task, TaskSender};
-pub use self::stream::{Stream, StreamSender};
+pub use self::stream::{Stream};

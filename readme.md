@@ -32,8 +32,8 @@ This library provides task / stream primitives to orchestrate concurrency in Rus
 * [Stream&lt;T&gt;](#stream)
   * [Creating Streams](#creating_streams)
   * [Reading Streams](#reading_streams)
-  * [Combining Streams](#combining_streams)
-  * [Composing Streams](#composing_streams)
+  * [Merging Streams](#merging_streams)
+  * [Streams Operators](#stream_operators)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
@@ -218,17 +218,12 @@ fn main() {
 <a name='stream'></a>
 ## Stream&lt;T&gt;
 
-Stream&lt;T&gt; provides a means to generate async sequences from 
-which a caller may listen to. Internally, Stream&lt;T&gt; abstracts 
-mpsc channels and provides some composability functions to aid in data 
-flow.
+Stream&lt;T&gt; provides a means to generate async sequences.
 
 <a name='creating_streams'></a>
 ### Creating Streams
 
-The following creates a simple sequence of numbers. The streams closure 
-expects a Result&lt;(), SendError&gt; result which can be obtain from the sender.
-The stream ends once this closure finishes.
+The following creates a stream of numbers. 
 
 ```rust
 use smoke::async::Stream;
@@ -236,10 +231,10 @@ use smoke::async::Stream;
 fn main() {
   // a stream of numbers, 1 - 4.
   let stream = Stream::new(|sender| {
-      try! (sender.send(1) );
-      try! (sender.send(2) );
-      try! (sender.send(3) );
-      sender.send(4) // ok
+      try! ( sender.send(1) );
+      try! ( sender.send(2) );
+      try! ( sender.send(3) );
+      sender.send(4)
   });
 }
 ```
@@ -247,43 +242,38 @@ fn main() {
 <a name='reading_streams'></a>
 ### Reading Streams
 
-A stream can be read with the .async() and .sync(bound) functions. Internally, the
-.async() and .sync(bound) provide a abstraction over a mpsc channel() or sync_channel(bound) 
-respectively.
+Use the .read(n) function to begin reading from a stream. The
+read function will internally spawn a new thread for the body
+of the stream closure and return to the caller a mpsc Receiver.
 
-For details see..
-* [std::sync::mpsc::channel](#https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html)
-* [std::sync::mpsc::sync_channel](#https://doc.rust-lang.org/std/sync/mpsc/fn.sync_channel.html)
-
-Calling .sync() or .async() on a stream returns a Receiver&lt;T&gt; a caller can use
-to iterate elements. 
+The .read(n) function takes a bound. The bound correlates to a
+mpsc sync_channel bound. Setting a bound of 0 will cause the
+sending thread to block on each iteration, setting a higher
+bound allows for asynchronous buffering.
 
 ```rust
 use smoke::async::Stream;
 
-// creates a stream of numbers.
-fn numbers() -> Stream<i32> {
-    Stream::new(|sender| {
-      (0..100)
-        .map(|n| sender.send(n))
-        .last()
-        .unwrap()
-    })
-}
-
 fn main() {
-  for n in numbers().async() {
+  // a stream of numbers, 1 - 4.
+  let stream = Stream::new(|sender| {
+      try! ( sender.send(1) );
+      try! ( sender.send(2) );
+      try! ( sender.send(3) );
+      sender.send(4)
+  }); 
+  
+  for n in stream.read(0) {
       println!("recv: {}", n);
   }
 }
 
 ```
 
-<a name='combining_streams'></a>
-### Combining Streams
+<a name='merging_streams'></a>
+### Merging Streams
 
-Multiple streams of the same type can be merged into a single stream. The following creates two 
-distinct streams (numbers and words), merges them into a single stream and reads.
+Streams of the same type can be merged with the .merge() function.
 
 ```rust
 use smoke::async::Stream;
@@ -315,13 +305,9 @@ fn words() -> Stream<Item> {
 }
 
 fn main() {
-  // combine ...
-  let stream = Stream::combine(vec![
-    numbers(),
-    words()
-  ]);
-  // read ...
-  for item in stream.async() {
+  let streams = vec![numbers(), words()];
+  let merged  = Stream::merge(streams);
+  for item in stream.read(0) {
     match item {
       Item::Word(word)     => println!("word: {:?}", word),
       Item::Number(number) => println!("number: {:?}", number)
@@ -330,12 +316,11 @@ fn main() {
 }
 ```
 
-<a name='composing_streams'></a>
-### Composing Streams
+<a name='stream_operators'></a>
+### Stream Operators
 
-Streams support composition in a similar fashion to Tasks. Callers
-can use .map() .filter() and .fold() to map and modify the stream 
-prior to calling .sync() or .async() to read the stream.
+Streams support some operators to transform a stream prior to reading a stream. This allows
+for some stream composition. Streams currently support .filter(), .map() and .fold().
 
 ```rust
 use smoke::async::Stream;
@@ -349,35 +334,30 @@ fn numbers() -> Stream<i32> {
   }) 
 }
 
-fn words() -> Stream<&'static str> {
-  Stream::new(|sender| {
-      "the quick brown fox jumps over the lazy dog"
-        .split(" ")
-        .map(|n| sender.send(n))
-        .last()
-        .unwrap()
-  }) 
-}
-
-#[derive(Debug)]
-enum Item {
-  Number(i32),
-  Word(&'static str)
+use std::fmt::Debug;
+fn read<T: Debug + Send + 'static>(stream: Stream<T>) {
+    for n in stream.read(0) {
+      println!("{:?}", n);
+    }
 }
 
 fn main() {
-  // map streams ...
-  let stream = Stream::combine(vec![
-    numbers().map(|n| Item::Number(n)),
-    words().map  (|n| Item::Word(n))
-  ]);
-  
-  // read ...
-  for item in stream.async() {
-    match item {
-      Item::Word(word)     => println!("word: {:?}", word),
-      Item::Number(number) => println!("number: {:?}", number)
-    }
-  }
+  // filter
+  read(numbers().filter(|n| n % 2 == 0));
+  // map
+  read(numbers().map(|n| format!("num: {}", n)));
+  // fold
+  println!("{}", 
+    numbers().fold(0, |p, c| p + c)
+             .wait()
+             .unwrap());
+  // everything
+  println!("{}", 
+    numbers().filter(|n| n % 2 == 0)
+             .map(|n| format!("{}", n))
+             .fold(String::new(), |p, c| 
+                    format!("{} {} and", p, c))
+             .wait()
+             .unwrap());
 }
 ```

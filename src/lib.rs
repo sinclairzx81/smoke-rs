@@ -4,7 +4,7 @@ smoke-rs
 
 The MIT License (MIT)
 
-Copyright (c) 2015 Haydn Paterson (sinclair) <haydn.developer@gmail.com>
+Copyright (c) 2016 Haydn Paterson (sinclair) <haydn.developer@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,5 @@ THE SOFTWARE.
 
 #[macro_use]
 extern crate lazy_static;
-
-
 
 pub mod async;
