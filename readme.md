@@ -54,7 +54,7 @@ fn main() {
 ```
 
 <a name='run_sync'></a>
-### Run Tasks Synchronously
+### Run Sync
 
 To run a task synchronously, use the .wait() function. The .wait() 
 function will block the current thread and return a Result&lt;T, RecvError&gt; 
@@ -76,7 +76,7 @@ fn main() {
 ```
 
 <a name='run_async'></a>
-### Run Tasks Asynchronously
+### Run Async
 
 Tasks can be run asynchronously with the .async() function. The .async() 
 function will pass a Result&lt;T, RecvError&gt; into the closure provided
@@ -120,7 +120,7 @@ fn main() {
 }
 ```
 <a name='run_parallel'></a>
-### Run Tasks in Parallel
+### Run in Parallel
 
 Tasks can be run in parallel by with the .all() function. The all() function accepts a vector
 of type Vec&lt;Task&lt;T&gt;&gt; and gives back a new task of type Task&lt;Vec&lt;T&gt;&gt; which
@@ -149,7 +149,7 @@ fn main() {
 }
 ```
 <a name='composing'></a>
-### Composing Tasks
+### Composing
 
 Tasks can be composed with the .then() function. Tasks chained
 with the .then() function will result in sequential execution of the 
