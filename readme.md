@@ -53,7 +53,7 @@ fn main() {
 }
 ```
 
-<a name='run_tasks_synchronously'></a>
+<a name='run_sync'></a>
 ### Run Tasks Synchronously
 
 To run a task synchronously, use the .wait() function. The .wait() 
@@ -75,7 +75,7 @@ fn main() {
 }
 ```
 
-<a name='run_tasks_asynchronously'></a>
+<a name='run_async'></a>
 ### Run Tasks Asynchronously
 
 Tasks can be run asynchronously with the .async() function. The .async() 
@@ -119,7 +119,7 @@ fn main() {
     println!("{}", handle.wait().unwrap());
 }
 ```
-<a name='run_tasks_in_parallel'></a>
+<a name='run_parallel'></a>
 ### Run Tasks in Parallel
 
 Tasks can be run in parallel by with the .all() function. The all() function accepts a vector
@@ -148,7 +148,7 @@ fn main() {
    println!("{:?}", result.unwrap()); 
 }
 ```
-<a name='composing_tasks'></a>
+<a name='composing'></a>
 ### Composing Tasks
 
 Tasks can be composed with the .then() function. Tasks chained
@@ -208,6 +208,27 @@ fn main() {
 }
 ```
 
+<a name="scheduling" />
+
+By default, all tasks are scheduled to run on a default background threadpool. However, sometimes 
+it may be desirable to create tasks on threadpools outside of the default. 
+
+The code below creates a new scheduler with a threadpool size of 4. Tasks can be created to use custom
+schedulers with the .scheduled() function.
+
+```rust
+use smoke::async::{Task, Scheduler};
+
+fn main() {
+  let scheduler = Scheduler::new(4);
+  let task = Task::scheduled(scheduler, |sender| {
+    sender.send(100)
+  });
+  
+  println!("{}", task.wait().unwrap());
+}
+```
+
 <a name='stream'></a>
 ## Stream&lt;T&gt;
 
@@ -231,28 +252,6 @@ fn main() {
   });
 }
 ```
-
-<a name="scheduling" />
-
-By default, all tasks are scheduled to run on a default background threadpool. However, sometimes 
-it may be desirable to create tasks on threadpools outside of the default. 
-
-The code below creates a new scheduler with a threadpool size of 4. Tasks can be created to use custom
-schedulers with the .scheduled() function.
-
-```rust
-use smoke::async::{Task, Scheduler};
-
-fn main() {
-  let scheduler = Scheduler::new(4);
-  let task = Task::scheduled(scheduler, |sender| {
-    sender.send(100)
-  });
-  
-  println!("{}", task.wait().unwrap());
-}
-```
-
 
 <a name='reading_streams'></a>
 ### Reading Streams
