@@ -153,12 +153,10 @@ fn main() {
 <a name="scheduling"></a>
 ### Scheduling
 
-For convenience, Tasks are run can be waited on and run asynchronously without
-needing to be concerned about how tasks are run. Internally, tasks are scheduled
-to run on a variety of schedulers managed by the Task. However, in some instances, 
-it may be desirable to override the default scheduling behavior. 
+For convenience, tasks manage scheduling on behalf of the caller, however, in some
+scenarios, it may be desirable to have control over task scheduling behavior.
 
-Smoke provides 3 built in schedulers users can use to schedule tasks manually. 
+Smoke provides 3 built in scheduler types users can use to schedule tasks manually. 
 
 These include:
 * SyncScheduler - Tasks scheduled here are executed in the current thread.
