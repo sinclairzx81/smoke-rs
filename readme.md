@@ -296,8 +296,7 @@ fn main() {
 <a name='stream_operators'></a>
 ### Stream Operators
 
-Streams support some operators to transform a stream prior to reading a stream. This allows
-for some stream composition. Streams currently support .filter(), .map() and .fold().
+Streams support .filter(), .map() and .fold() operators. 
 
 ```rust
 use smoke::async::Stream;
