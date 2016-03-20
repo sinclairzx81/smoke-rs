@@ -20,14 +20,13 @@ Smoke's primary motive is to strike a good balance between Rust's thread safe se
 ease of use of Tasks.
 
 * [Task&lt;T&gt;](#task)
-  * [Creating](#creating_tasks)
+  * [Create Task](#creating_tasks)
   * [Run Sync](#run_sync)
   * [Run Async](#run_async)
   * [Run Parallel](#run_parallel)
-  * [Composing](#composing)
   * [Scheduling](#scheduling)
 * [Stream&lt;T&gt;](#stream)
-  * [Creating](#creating_streams)
+  * [Create Stream](#creating_streams)
   * [Reading](#reading_streams)
   * [Merging](#merging_streams)
   * [Operators](#stream_operators)
@@ -38,7 +37,7 @@ ease of use of Tasks.
 A Task encapsulates a asynchronous operation. 
 
 <a name='creating_tasks'></a>
-### Creating Tasks
+### Create Task
 
 The following will create a Task&lt;i32&gt;. The value for this task is 
 given by the call to sender.send() function.
@@ -150,65 +149,6 @@ fn main() {
    println!("{:?}", result.unwrap()); 
 }
 ```
-<a name='composing'></a>
-### Composing
-
-Tasks can be composed with the .then() function. Tasks chained
-with the .then() function will result in sequential execution of the 
-tasks in the chain. 
-
-The .then() function accepts a task of type Task&lt;T&gt; and returns a new task
-of type Task&lt;U&gt; which allows a caller to optionally map the 
-original task to a new type. 
-
-The following demostrates some basic composition.
-
-
-```rust
-use smoke::async::Task;
-
-// simple add function.
-fn add(a: i32, b: i32) -> Task<i32> {
-  Task::new(move |sender| {
-    sender.send(a + b)
-  })
-}
-// simple format function.
-use std::fmt::Debug;
-fn format<T>(t: T) -> Task<String> where
-   T:Debug + Send + 'static {
-   Task::new(move |sender| {
-      let n = format!("result is: {:?}", t);
-      sender.send(n)
-   })
-}
-fn main() {
-   
-   // add two numbers
-   let result = add(1, 2).wait();
-   println!("{:?}", result.unwrap()); 
-   
-   // wait 1 second.
-   // add two numbers.
-   let result = Task::delay(1000)
-                .then(|_| add(10, 20))
-                .wait();
-                
-   println!("{:?}", result.unwrap()); 
-              
-   // wait 1 second.
-   // add two numbers.
-   // add 3.
-   // format.
-   let result = Task::delay(1000)
-                .then(|_|   add(100, 200))
-                .then(|res| add(res.unwrap(), 3))
-                .then(|res| format(res.unwrap()))
-                .wait();
-   
-   println!("{:?}", result.unwrap());
-}
-```
 
 <a name="scheduling"></a>
 ### Scheduling
@@ -260,7 +200,7 @@ fn main() {
 Stream&lt;T&gt; provides a means to generate async sequences.
 
 <a name='creating_streams'></a>
-### Creating Streams
+### Create Stream
 
 The following creates a stream of numbers. 
 
