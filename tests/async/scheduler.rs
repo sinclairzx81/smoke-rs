@@ -1,7 +1,5 @@
 use smoke::async::Task;
 use smoke::async::{
-  WaitHandle, 
-  Scheduler,  
   ThreadScheduler, 
   SyncScheduler, 
   ThreadPoolScheduler
@@ -12,9 +10,8 @@ fn create_ok_task() -> Task<i32> {
 }
 /// creates a task that will panic.
 fn create_panic_task() -> Task<i32> {
-  Task::delay(1).then(|_| Task::new(|sender| {
+  Task::delay(1).then(|_| Task::new(|_| {
     panic!("boom");
-    sender.send(1)
   }))
 }
 ///------------------------------------
@@ -22,11 +19,11 @@ fn create_panic_task() -> Task<i32> {
 ///------------------------------------
 #[test]
 fn sync_scheduler_create() {
-  let _ = SyncScheduler::new();
+  let _ = SyncScheduler;
 }
 #[test]
 fn sync_scheduler_run_ok_task() {
-  let scheduler = SyncScheduler::new();
+  let scheduler = SyncScheduler;
   let task      = create_ok_task();
   match task.schedule(scheduler).wait() {
     Ok(result) => assert_eq!(1, result),
@@ -36,7 +33,7 @@ fn sync_scheduler_run_ok_task() {
 #[test]
 #[should_panic]
 fn sync_scheduler_run_panic_task() {
-  let scheduler = SyncScheduler::new();
+  let scheduler = SyncScheduler;
   let task      = create_panic_task();
   match task.schedule(scheduler).wait() {
     Ok(result) => assert_eq!(1, result),
@@ -45,7 +42,7 @@ fn sync_scheduler_run_panic_task() {
 }
 #[test]
 fn sync_scheduler_run_from_task() {
-  let scheduler = SyncScheduler::new();
+  let scheduler = SyncScheduler;
   let task      = create_ok_task();
   match task.schedule(scheduler).wait() {
     Ok(result) => assert_eq!(1, result),

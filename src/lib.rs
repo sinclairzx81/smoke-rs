@@ -25,4 +25,5 @@
 //
 // ---------------------------------------------------------------------------*/
 
+/// Provides Task, Stream and Scheduling primitives.
 pub mod async;

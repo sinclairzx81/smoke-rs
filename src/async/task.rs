@@ -38,27 +38,22 @@ use super::scheduling::{
   ThreadPoolScheduler
 };
 
-/// TaskSender<T>
-/// 
-/// Wraps a mpsc SyncSender to enforce only single send. The
-/// task sender achieves this by capturing itself on send vs
-/// the SyncSender allowing for multiple sends.
+/// Wraps a mpsc SyncSender&lt;T&gt; to enforce only single send.
 pub struct TaskSender<T> {
    sender: SyncSender<T>
 }
 impl<T> TaskSender<T>  {
-    /// creates a new TaskSender<T>. 
+    /// Creates a new task sender.
     pub fn new(sender: SyncSender<T>) -> TaskSender<T> {
       TaskSender { sender: sender }
     }
-    
-    /// The send() function will resolve this task.
+    /// Resolves this task sender with the given value.
     pub fn send(self, value:T) -> Result<(), SendError<T>> {
       self.sender.send(value)
     }
 }
 
-/// TaskFunc<T>
+/// Specialized boxed FnOnce() closure type for tasks.
 pub trait TaskFunc<T> {
     type Output;
     fn call(self: Box<Self>, value:T) -> Self::Output;
@@ -70,19 +65,41 @@ impl<R, T, F: FnOnce(T) -> R> TaskFunc<T> for F {
     }
 }
 
-/// Task<T>
+/// Encapsulates a asynchronous operation. Tasks can be run either synchronously or asynchronously.
+///
+/// # Example
+/// ```
+/// use smoke::async::Task;
+/// use std::thread;
+///
+/// fn hello() -> Task<&'static str> {
+///   Task::new(|sender| {
+///     sender.send("hello")
+///   })
+/// }
+/// 
+/// fn main() {
+///   // synchronous
+///   let result = hello().wait();
+///   
+///   // asynchronous
+///   hello().async(|result| {
+///      
+///   }).wait(); // prevent exit.
+/// }
+/// ```
 pub struct Task<T> {
+    /// The closure to resolve this task.
     pub func: Box<TaskFunc<TaskSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
 }
 impl <T> Task<T> where T: Send + 'static {
-    /// new() creates a new task.
+    /// Creates a new task.
     pub fn new<F>(func: F) -> Task<T> 
       where F: FnOnce(TaskSender<T>) -> Result<(), SendError<T>> + Send + 'static {
         Task { func: Box::new(func) }
     }
     
-    /// The map() function allows the caller to transform the result of
-    /// a task into another type.
+    /// Maps this task into another value.
     pub fn map<U, F>(self, func: F) -> Task<U> where 
         U : Send + 'static,
         F : FnOnce(Result<T, RecvError>) -> U + Send + 'static {
@@ -92,8 +109,7 @@ impl <T> Task<T> where T: Send + 'static {
           })
     }
     
-    /// The then() functions allows the caller to chain consecutive
-    /// tasks. This function returns a new Task to be waited on later.
+    /// Creates a new task that runs this task followed by the next.
     pub fn then<U, F>(self, func: F) -> Task<U> where 
         U : Send + 'static,
         F : FnOnce(Result<T, RecvError>) -> Task<U> + Send + 'static {
@@ -104,10 +120,10 @@ impl <T> Task<T> where T: Send + 'static {
           })
     }
     
-    /// The all() function will return a task which will process
-    /// the given tasks in parallel. The caller may provide the 
-    /// number of threads the task should use to process each 
-    /// task. 
+    /// Creates a new task that will process the given tasks in
+    /// parallel. Tasks executed in parallel will be scheduled
+    /// on a internal threadpool with a pool size of the threads
+    /// argument.
     pub fn all(threads: usize, tasks: Vec<Task<T>>) -> Task<Vec<T>>  {
         Task::<Vec<T>>::new(move |sender| {
               let scheduler = ThreadPoolScheduler::new(threads);
@@ -124,18 +140,15 @@ impl <T> Task<T> where T: Send + 'static {
         })
     }
     
-    /// The schedule() function will begin the task on the given 
-    /// scheduler. The function will return a wait handle to the
-    /// caller.
+    /// Schedules this task to run on the given scheduler. Returns
+    /// a wait handle to the caller.
     pub fn schedule<S: Scheduler>(self, scheduler:S) -> WaitHandle<T> {
         scheduler.run(self)
     }
     
 
-    /// The async() function will begin this task on its own thread.
-    /// The result will be passed into the given closure. This 
-    /// function will return a wait handle to the caller. The caller
-    /// may wait on the result of the closure.
+    /// Runs this task immediately on its only thread. The result will
+    /// be passed into the given closure.
     pub fn async<U, F>(self, func: F) -> WaitHandle<U>
         where U : Send + 'static,
               F : FnOnce(Result<T, RecvError>) -> U + Send + 'static {
@@ -146,17 +159,15 @@ impl <T> Task<T> where T: Send + 'static {
         }))
     }
     
-
-    /// The wait() function will begin the task on the current 
-    /// thread, causing the current thread to block until the 
-    /// task completes.
+    /// Waits synchronously for this task to complete.
     pub fn wait(self) -> Result<T, RecvError> {
         SyncScheduler.run(self).wait()
     }
 }
 
 impl Task<()> {
-    /// Creates a Task<T> that will block for the given duration.
+    /// Creates a task that will delay for the given duration
+    /// in milliseconds.
     pub fn delay(millis: u64) -> Task<()> {
       use std::thread;
       use std::time::Duration;

@@ -29,10 +29,27 @@ extern crate threadpool;
 
 use std::sync::mpsc::{sync_channel, Receiver, RecvError};
 use super::task::{Task, TaskSender};
+use self::threadpool::ThreadPool;
+use std::thread;
 
-/// WaitHandle<T>
+
+/// A waitable handle for scheduled issused by schedulers running tasks.
 ///
-/// A waitable handle for scheduled tasks.
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::{Scheduler, ThreadScheduler};
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = ThreadScheduler;
+///   let handle    = scheduler.run(hello());
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
 pub struct WaitHandle<T> {
   receiver: Receiver<T>
 }
@@ -56,29 +73,34 @@ impl<T> WaitHandle<T> where T: Send + 'static {
 }
 
 
-/// Scheduler
-///
 /// Common scheduler trait implemented by all schedulers.
 pub trait Scheduler {
   
-  /// Will schedule a task to be run. Returns a WaitHandle<T> to the caller
-  /// which may optionally be waited on. 
+  /// Schedules a task.
   fn run<T>(&self, task: Task<T>) -> WaitHandle<T> where T: Send + 'static;
 }
 
-/// SyncScheduler
-///
 /// A synchronous scheduler. Tasks scheduled on this scheduler
 /// will be executed on the current thread, potentially blocking
 /// other operations.
+///
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::SyncScheduler;
+///
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = SyncScheduler;
+///   let handle    = hello().schedule(scheduler);
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
 pub struct SyncScheduler;
-impl SyncScheduler {
-  
-  /// Creates a new SyncScheduler.
-  pub fn new() -> SyncScheduler {
-    SyncScheduler
-  }
-}
 impl Scheduler for SyncScheduler {
   fn run<T>(&self, task: Task<T>) -> WaitHandle<T> where T: Send + 'static {
     let (sender, receiver) = sync_channel(1);
@@ -91,21 +113,36 @@ impl Scheduler for SyncScheduler {
   }
 }
 
-/// ThreadScheduler
-///
 /// A asynchronous scheduler. Tasks scheduled here are executed
 /// on their own dedicated threads. When using this scheduler, all
 /// threads are unbounded. For bounded threads, consider using
 /// the ThreadPoolScheduler.
-use std::thread;
+///
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::ThreadScheduler;
+///
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = ThreadScheduler;
+///   let handle    = hello().schedule(scheduler);
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
 pub struct ThreadScheduler;
 impl ThreadScheduler {
-  /// Creates a new ThreadScheduler.
+  /// Creates a new thread scheduler.
   pub fn new() -> ThreadScheduler {
     ThreadScheduler
   }
 }
 impl Scheduler for ThreadScheduler {
+  /// Schedules a task.
   fn run<T>(&self, task: Task<T>) -> WaitHandle<T> where T: Send + 'static {
     let (sender, receiver) = sync_channel(1);
     let handle = WaitHandle::new(receiver);
@@ -117,19 +154,32 @@ impl Scheduler for ThreadScheduler {
     }); handle
   }
 }
-/// ThreadPoolScheduler
-///
+
 /// A asynchronous scheduler. Tasks scheduled here are executed
-/// in a pool of threads specified by the caller at creation,
-/// any threads scheduled here will be queued if the pool of 
-/// threads is busy.
-use self::threadpool::ThreadPool;
+/// within a threadpool of the given size.
+///
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::ThreadPoolScheduler;
+///
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = ThreadPoolScheduler::new(8);
+///   let handle    = hello().schedule(scheduler);
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
 pub struct ThreadPoolScheduler {
   threadpool: ThreadPool
 }
 impl ThreadPoolScheduler {
   
-  /// Creates a new ThreadPoolScheduler with the given number of threads.
+  /// Creates a new threadpool scheduler with the given number of threads.
   pub fn new(threads: usize) -> ThreadPoolScheduler {
     let threadpool = ThreadPool::new(threads);
     ThreadPoolScheduler {

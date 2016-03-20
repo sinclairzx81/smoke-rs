@@ -29,14 +29,10 @@ pub mod task;
 pub mod stream;
 pub mod scheduling;
 
-pub use self::task::{Task};
-pub use self::stream::{Stream};
-pub use self::scheduling::{
-  WaitHandle,
-  Scheduler, 
-  SyncScheduler,
-  ThreadScheduler,
-  ThreadPoolScheduler
-};
-  
-
+pub use self::task::Task;
+pub use self::stream::Stream;
+pub use self::scheduling::WaitHandle;
+pub use self::scheduling::Scheduler;
+pub use self::scheduling::SyncScheduler;
+pub use self::scheduling::ThreadScheduler;
+pub use self::scheduling::ThreadPoolScheduler;
