@@ -23,7 +23,7 @@ ease of use of Tasks.
   * [Creating](#creating_tasks)
   * [Run Sync](#run_sync)
   * [Run Async](#run_async)
-  * [Run in Parallel](#run_parallel)
+  * [Run Parallel](#run_parallel)
   * [Composing](#composing)
   * [Scheduling](#scheduling)
 * [Stream&lt;T&gt;](#stream)
@@ -120,7 +120,7 @@ fn main() {
 }
 ```
 <a name='run_parallel'></a>
-### Run in Parallel
+### Run Parallel
 
 Tasks can be run in parallel by with the .all() function. The all() function accepts a vector
 of type Vec&lt;Task&lt;T&gt;&gt; and gives back a new task of type Task&lt;Vec&lt;T&gt;&gt; which
@@ -138,7 +138,9 @@ fn add(a: i32, b: i32) -> Task<i32> {
 }
 
 fn main() {
-   let result = Task::all(vec![
+   // allocate 3 threads to process
+   // these tasks.
+   let result = Task::all(3, vec![
      add(10, 20),
      add(20, 30),
      add(30, 40)
