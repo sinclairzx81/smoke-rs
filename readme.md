@@ -210,24 +210,47 @@ fn main() {
 }
 ```
 
-<a name="scheduling" />
+<a name="scheduling"></a>
+### Scheduling
 
-By default, all tasks are scheduled to run on a default background threadpool. However, sometimes 
-it may be desirable to create tasks on threadpools outside of the default. 
+For convenience, Tasks are run can be waited on and run asynchronously without
+needing to be concerned about how tasks are run. Internally, tasks are scheduled
+to run on a variety of schedulers managed by the Task. However, in some instances, 
+it may be desirable to override the default scheduling behavior. 
 
-The code below creates a new scheduler with a threadpool size of 4. Tasks can be created to use custom
-schedulers with the .scheduled() function.
+Smoke provides 3 built in schedulers users can use to schedule tasks manually. 
+
+These include:
+* SyncScheduler - Tasks scheduled here are executed in the current thread.
+* ThreadScheduler - Tasks scheduled here are executed in there own thread.
+* ThreadPoolScheduler - Tasks executed here are executed on a bounded threadpool.
 
 ```rust
-use smoke::async::{Task, Scheduler};
+use smoke::async::Task;
+use smoke::async:: {
+  SyncScheduler,
+  ThreadScheduler,
+  ThreadPoolScheduler
+};
+
+fn hello() -> Task<&'static str> {
+  Task::delay(1).map(|_| "hello")
+}
 
 fn main() {
-  let scheduler = Scheduler::new(4);
-  let task = Task::scheduled(scheduler, |sender| {
-    sender.send(100)
-  });
-  
-  println!("{}", task.wait().unwrap());
+   // runs the task synchronously.
+   let scheduler = SyncScheduler;
+   let result    = hello().schedule(scheduler).wait();
+   
+   // creates a new thread for each task run.
+   let scheduler = ThreadScheduler;
+   let result    = hello().schedule(scheduler).wait();
+      
+   // schedules the task to be run on a 
+   // threadpool, in this example, there
+   // are 8 available threads.
+   let scheduler = ThreadPoolScheduler::new(8);
+   let result    = hello().schedule(scheduler).wait();   
 }
 ```
 
