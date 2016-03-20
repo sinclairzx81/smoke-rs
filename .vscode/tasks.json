@@ -6,7 +6,7 @@
         {
             "taskName": "doc",
             // "taskName": "run",
-            // "args": ["--example", "main"],
+            // "args": ["--example", "bench"],
             "isBuildCommand": true,
             "showOutput": "always",
             "problemMatcher": {

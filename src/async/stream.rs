@@ -32,12 +32,8 @@ use std::thread;
 
 use super::task::Task;
 
-/// StreamFunc<T>
-///
-/// Specialized FnOnce closure for Stream<T>. Provides a boxable
-/// FnOnce signature for Task resolution, and acts as a fill in 
-/// for a possible Box<FnOnce> capability in future. 
-trait StreamFunc<T> {
+/// Specialized boxed FnOnce() closure type for streams.
+pub trait StreamFunc<T> {
     type Output;
     fn call(self: Box<Self>, arg: T) -> Self::Output;
 }
@@ -48,39 +44,62 @@ impl<T, TResult, F: FnOnce(T) -> TResult> StreamFunc<T> for F {
     }
 }
 
-/// Stream<T> 
-///
-/// Provides functionality to create async sequences
-/// of the given type.
+/// Provides functionality to generate asynchronous sequences.
 pub struct Stream<T>  {
-  func: Box<StreamFunc<SyncSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
+  /// The closure used to emit elements on this stream.
+  pub func: Box<StreamFunc<SyncSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
 }
 impl<T> Stream<T> where T: Send + 'static {
   
-  /// creates a new stream.
+  /// Creates a new stream.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  /// 
+  /// fn numbers() -> Stream<i32> {
+  ///   Stream::new(|sender| {
+  ///      try!(sender.send(1));
+  ///      try!(sender.send(2));
+  ///      try!(sender.send(3));
+  ///      sender.send(4)    
+  ///   })
+  /// }
+  /// ```
   pub fn new<F>(func:F) -> Stream<T>  where
       F: FnOnce(SyncSender<T>) -> Result<(), SendError<T>> + Send + 'static {
       Stream { func: Box::new(func) }
   }
   
-  /// Begins reading from the stream. The read() function 
-  /// will internally spawn a new thread for the stream
-  /// sender and return to the caller a Receiver<T> in 
-  /// which to recieve results. The bound given is tied
-  /// to the mpsc sync_sender bound. The higher the bound,
-  /// the more internally buffering. For 1 - 1 send/recv,
-  /// set a value of 1.
+  /// Reads elements from the stream.
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// for n in Stream::range(0, 4).read(0) {
+  ///     // 0, 1, 2, 3
+  /// } 
   pub fn read(self, bound: usize) -> Receiver<T> {
       let (sync_sender, receiver) = sync_channel(bound);
       let _ = thread::spawn(move || self.func.call(sync_sender));
       receiver
   }
   
-  /// The merge() function will merge multiple streams of
-  /// the same type into a one stream. To merge, this
-  /// function will spawn a new thread for each stream 
-  /// given. The output stream will emit these with a 
-  /// bound of 0 for each.
+  /// Will merge multiple streams into a single stream. 
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// let a = Stream::range(0, 4);
+  /// let b = Stream::range(4, 8);
+  /// let c = Stream::merge(vec![a, b]);
+  /// for n in c.read(0) {
+  ///     // 0, 1, 2, 3, 4, 5, 6, 7
+  /// }
+  /// ```
   pub fn merge(streams: Vec<Stream<T>>) -> Stream<T> {
       Stream::new(move |sender| {
         let handles = streams.into_iter()
@@ -107,11 +126,18 @@ impl<T> Stream<T> where T: Send + 'static {
       })
   }
   
-  /// The filter() function will filter elements from the
-  /// source stream. This function is analogous to a 
-  /// filter() on a iter, with the difference being that
-  /// filtering will only occur once the output stream is
-  /// read.
+  /// Will filter elements from the source stream.
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// let numbers = Stream::range(0, 100);
+  /// let evens   = numbers.filter(|n| n % 2 == 0);
+  /// for n in evens.read(0) {
+  ///     // only even numbers
+  /// }
+  /// ```
   pub fn filter<F>(self, func:F) -> Stream<T> where 
       F: Fn(&T) -> bool + Send + 'static {
       Stream::new(move |sender|
@@ -122,11 +148,18 @@ impl<T> Stream<T> where T: Send + 'static {
                     .unwrap())
   }
   
-  /// The map() function will map elements from the
-  /// source stream to the destination. This function 
-  /// is analogous to a map() on a iter, with the 
-  /// difference being that mapping  will only occur 
-  /// once the output stream is read.
+  /// Will map the source stream into a new stream.
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// let numbers = Stream::range(0, 100);
+  /// let strings = numbers.map(|n| format!("number {}", n));
+  /// for n in strings.read(0) {
+  ///     // strings
+  /// }
+  /// ```    
   pub fn map<F, U>(self, func:F) -> Stream<U> where 
     U: Send + 'static,
     F: Fn(T) -> U + Send + 'static {
@@ -137,11 +170,17 @@ impl<T> Stream<T> where T: Send + 'static {
                     .unwrap())
   }
   
-  /// The fold() function will aggregate source elements
-  /// from the stream to a single output. This function
-  /// is analogous to a fold() on a iter, which the 
-  /// difference being the fold will only occur once
-  /// the output task is scheduled.
+  /// Reduces elements in the source stream and returns a task
+  /// to obtain the result.
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// let numbers  = Stream::range(0, 100);
+  /// let task     = numbers.fold(0, |p, c| p + c);
+  /// let result   = task.wait().unwrap();
+  /// ```  
   pub fn fold<F>(self, init: T, func:F) -> Task<T> where 
     F: FnMut(T, T) -> T + Send + 'static {
       Task::new(move |sender|
@@ -154,6 +193,16 @@ impl Stream<i32>  {
   
   /// Creates a linear sequence of i32 values from the
   /// given start and end range.
+  /// # Example
+  ///
+  /// ```
+  /// use smoke::async::Stream;
+  ///
+  /// let numbers = Stream::range(0, 100);
+  /// for n in numbers.read(0) {
+  ///     // only even numbers
+  /// }
+  /// ```  
   pub fn range(start: i32, end: i32) -> Stream<i32> {
     Stream::new(move |sender| (start..end)
                   .map(|n| sender.send(n))
