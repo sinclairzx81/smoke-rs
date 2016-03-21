@@ -10,10 +10,10 @@ fn hello() -> Task<&'static str> {
 }
 ```
 
-## overview
+## Overview
 
 Smoke is a lightweight Task and Stream library for Rust. The library aims to help simplify 
-asynchronous, concurrent and parallel programming in Rust by providing familar primitives 
+asynchronous, concurrent and parallel programming in Rust by providing familiar primitives 
 seen in languages like C# and JavaScript. 
 
 Smoke's primary motive is to strike a good balance between Rust's thread safe semantics and the
@@ -30,11 +30,12 @@ ease of use of Tasks.
   * [Reading](#reading_streams)
   * [Merging](#merging_streams)
   * [Operators](#stream_operators)
+  * [Cancel](#stream_cancel)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
 
-A Task encapsulates a asynchronous operation. 
+A Task encapsulates an asynchronous operation. 
 
 <a name='creating_tasks'></a>
 ### Create Task
@@ -77,9 +78,10 @@ fn main() {
 <a name='run_async'></a>
 ### Run Async
 
-Tasks can be run asynchronously with the .async() function. The .async() 
+A task can be run asynchronously with the .async() function. The .async() 
 function will pass a Result&lt;T, RecvError&gt; into the closure provided
-and return a wait handle to the caller. 
+and return a wait handle to the caller. The caller can use the handle to
+synchronize the result back to the calling thread.
 
 The following runs a Task asynchronously.
 
@@ -91,48 +93,32 @@ fn main() {
         sender.send("hello from task")
     });
     
-    task.async(|result| {
-      println!("{}", result.unwrap());
-    });
-    // program ends...
-}
-```
-The .async() function returns a handle which the caller can use
-to wait for completion. Results of the async closure can be obtained
-on the handle. 
-
-```rust
-use smoke::async::Task;
-
-fn main() {
-    let task = Task::new(|sender| {
-        sender.send("hello from task")
-    });
-    
     let handle = task.async(|result| {
       println!("{}", result.unwrap());
-      "hello from closure"
     });
     
     // sometime later...
-    println!("{}", handle.wait().unwrap());
+    
+    handle.wait();
 }
 ```
+
 <a name='run_parallel'></a>
 ### Run Parallel
 
-Tasks can be run in parallel by with the .all() function. The all() function accepts a vector
-of type Vec&lt;Task&lt;T&gt;&gt; and gives back a new task of type Task&lt;Vec&lt;T&gt;&gt; which
-contains the results for each task given.
+Many tasks can be run in parallel by with the .all() function. This function accepts a vector
+of type Vec&lt;Task&lt;T&gt;&gt; and gives back a new task of type Task&lt;Vec&lt;T&gt;&gt;.
 
 The following demonstrates running tasks in parallel.
 
 ```rust
 use smoke::async::Task;
 
-fn add(a: i32, b: i32) -> Task<i32> {
+fn compute() -> Task<i32> {
   Task::new(move |sender| {
-    sender.send(a + b)
+    // emulate compute...
+    Task::delay(1000).wait();
+    sender.send(10)
   })
 }
 
@@ -140,13 +126,10 @@ fn main() {
    // allocate 3 threads to process
    // these tasks.
    let result = Task::all(3, vec![
-     add(10, 20),
-     add(20, 30),
-     add(30, 40)
-   ]).wait();
-   
-   // [30, 50, 70]
-   println!("{:?}", result.unwrap()); 
+     compute(),
+     compute(),
+     compute()
+   ]).wait().unwrap();
 }
 ```
 
@@ -154,14 +137,14 @@ fn main() {
 ### Scheduling
 
 For convenience, tasks manage scheduling on behalf of the caller, however, in some
-scenarios, it may be desirable to have control over task scheduling behavior.
+scenarios, it maybe desirable to have more control over task scheduling behavior.
 
-Smoke provides 3 built in scheduler types users can use to schedule tasks manually. 
+Smoke provides 3 built-in scheduler types users can use to schedule tasks manually. 
 
 These include:
-* SyncScheduler - Tasks scheduled here are executed in the current thread.
-* ThreadScheduler - Tasks scheduled here are executed in there own thread.
-* ThreadPoolScheduler - Tasks executed here are executed on a bounded threadpool.
+* SyncScheduler - Tasks scheduled here will be executed in the current thread.
+* ThreadScheduler - Tasks scheduled here will be executed in their own thread.
+* ThreadPoolScheduler - Tasks executed here will be executed on a bounded threadpool.
 
 ```rust
 use smoke::async::Task;
@@ -241,7 +224,7 @@ fn main() {
   }); 
   
   for n in stream.read(0) {
-      println!("recv: {}", n);
+      println!("got: {}", n);
   }
 }
 
@@ -250,7 +233,7 @@ fn main() {
 <a name='merging_streams'></a>
 ### Merging Streams
 
-Streams of the same type can be merged with the .merge() function.
+Multiple streams of the same type can be merged into a single stream with the .merge() function.
 
 ```rust
 use smoke::async::Stream;
@@ -296,9 +279,8 @@ fn main() {
 <a name='stream_operators'></a>
 ### Stream Operators
 
-Streams support .filter(), .map() and .fold() operators. These operators are 
-applied to the stream prior to reading the stream (deferred) and can be used
-to build stream pipelines.
+Streams support .filter(), .map() and .fold() operators for stream composition. These operators are 
+are deferred, and executed only when the stream is read().
 
 ```rust
 use smoke::async::Stream;
@@ -337,5 +319,57 @@ fn main() {
                     format!("{} {} and", p, c))
              .wait()
              .unwrap());
+}
+```
+<a name="stream_cancel"></a>
+### Cancel
+
+Sometimes, it might be useful to create infinite sequences. With sequences
+of this sort, its useful to be able to cancel them. Smoke supports stream 
+cancellation by way of rusts ownership semantics, and is closely tied to 
+mpsc channels. 
+
+In the example below, there is a stream that creates an infinite loop.
+Internally smoke will run this on a separate thread. The caller in main()
+attempts to read from this stream and immediately breaks out on the first
+iteration. Because the receiver is no longer owned, this causes the sender to Err()
+on the next loop.
+ 
+Smoke borrows on this behavior for stream cancellation.
+
+```rust
+use smoke::async::Stream;
+
+fn runtime() -> Stream<()> {
+  Stream::new(move |sender| {
+    loop {
+      // here, this loop will continue to 
+      // send as long as the receiver is 
+      // owned. If the receiver drops, then
+      // the call to send() will result in 
+      // Err(). In case of either Ok() or
+      // Err(), the calling thread will 
+      // exit this closure and terminate
+      // gracefully.
+      try!(sender.send(()));
+    }
+  })
+}
+
+fn main() {
+  
+  // calling read() returns a mpsc
+  // receiver which is becomes owned 
+  // by the for loop.
+  for _ in runtime().read(0) {
+    println!("got one");
+    break; // no more please...
+  } 
+  
+  // here, the receiver is no longer,
+  // owned, and the sending thread
+  // exits gracefully.
+  
+  println!("finished");
 }
 ```
