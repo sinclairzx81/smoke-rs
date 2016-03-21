@@ -24,6 +24,6 @@
  THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-pub mod read_async;
+pub mod read;
 
-pub use self::read_async::ReadAsync;
+pub use self::read::Read;

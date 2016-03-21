@@ -25,97 +25,46 @@
 ---------------------------------------------------------------------------*/
 
 use std::sync::Mutex;
-use std::io::{Read, BufRead, BufReader};
-use super::super::async::Task;
+use std::io::{Read as StdRead, BufRead, BufReader};
 use super::super::async::Stream;
 
-/// Adds asynchronous operations to the std::io::Read trait.
-pub trait ReadAsync {
-  
-  /// Asynchronously reads all bytes until EOF.
-  ///
-  /// #Example
-  /// ```
-  /// use smoke::io::ReadAsync;
-  /// 
-  /// let read = std::io::empty();
-  /// 
-  /// let task = read.read_to_string_task().async(|result| {
-  ///   let contents = result.unwrap();
-  /// });
-  /// ```
-  fn read_to_end_task(self: Self) -> Task<Vec<u8>>;
-  
-  /// Asynchronously reads all bytes until EOF. 
-  ///
-  /// #Example
-  /// ```
-  /// use smoke::io::ReadAsync;
-  /// 
-  /// let read = std::io::empty();
-  /// 
-  /// let task = read.read_to_string_task().async(|result| {
-  ///   let contents = result.unwrap();
-  /// });
-  /// ``` 
-  fn read_to_string_task(self: Self) -> Task<String>;
+/// Adds asynchronous operations over the std::io::Read trait.
+pub trait Read : StdRead {
   
   /// Streams bytes until EOF.
   ///
   /// #Example
   /// ```
-  /// use smoke::io::ReadAsync;
+  /// use smoke::io::Read;
   /// 
   /// let read = std::io::empty();
   /// 
-  /// // 16k
-  /// for bytes in read.read_stream(16384).read(0) {
+  /// // to stream with 16k chunks.
+  /// for bytes in read.to_stream(16384).read(0) {
   ///   println!("{}", bytes.len());
   /// }
   /// ```
-  fn read_stream(self: Self, size: usize) -> Stream<Vec<u8>>;
+  fn to_stream(self: Self, size: usize) -> Stream<Vec<u8>>;
   
   /// Stream lines until EOF.
   ///
   /// #Example
   /// ```
-  /// use smoke::io::ReadAsync;
+  /// use smoke::io::Read;
   /// 
   /// let read = std::io::empty();
   /// 
-  /// for bytes in read.read_line_stream().read(0) {
-  ///   println!("{}", bytes.len());
+  /// for line in read.to_line_stream().read(0) {
+  ///   println!("{}", line);
   /// }
   /// ```
-  fn read_line_stream(self: Self) -> Stream<String>;
+  fn to_line_stream(self: Self) -> Stream<String>;
 }
 
-impl<R: Read + Send + 'static> ReadAsync for R {
-  
-  /// Asynchronously reads all bytes until EOF. 
-  fn read_to_end_task(self: Self) -> Task<Vec<u8>> {
-    let reader = Mutex::new(self);
-    Task::new(move |sender| {
-      let mut reader = reader.lock().unwrap();
-      let mut buf    = Vec::new();
-      reader.read_to_end(&mut buf).unwrap();
-      sender.send(buf)
-    })
-  }
-  
-  /// Asynchronously reads all bytes until EOF. 
-  fn read_to_string_task(self: Self) -> Task<String> {
-    let reader = Mutex::new(self);
-    Task::new(move |sender| {
-      let mut reader = reader.lock().unwrap();
-      let mut buf    = String::new();
-      reader.read_to_string(&mut buf).unwrap();
-      sender.send(buf)
-    })
-  }
+impl<R: StdRead + Send + 'static> Read for R {
   
   /// Stream bytes until EOF.
-  fn read_stream(self: Self, bufsize: usize) -> Stream<Vec<u8>> {
+  fn to_stream(self: Self, bufsize: usize) -> Stream<Vec<u8>> {
       let reader = Mutex::new(self);
       Stream::new(move |sender| {
         let mut reader = reader.lock().unwrap();
@@ -132,7 +81,7 @@ impl<R: Read + Send + 'static> ReadAsync for R {
   }
   
   /// Stream lines until EOF.
-  fn read_line_stream(self: Self) -> Stream<String> {
+  fn to_line_stream(self: Self) -> Stream<String> {
       let reader = Mutex::new(Some(self));
       Stream::new(move |sender| {
         let mut reader = reader.lock().unwrap();

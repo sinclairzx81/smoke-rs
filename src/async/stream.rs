@@ -201,7 +201,7 @@ impl Stream<i32>  {
   /// for n in numbers.read(0) {
   ///     // only even numbers
   /// }
-  /// ```  
+  /// ``` 
   pub fn range(start: i32, end: i32) -> Stream<i32> {
     Stream::new(move |sender| (start..end)
                   .map(|n| sender.send(n))
@@ -210,26 +210,27 @@ impl Stream<i32>  {
   }
 }
 
-/// Trait for types that can be made into streams.
-pub trait IntoStream<T> {
+/// Trait implemented for types that can be converted into streams.
+pub trait ToStream<T> {
   
-  /// Asynchronously reads all bytes until EOF.
+  /// Converts this type to a stream.
   ///
   /// #Example
   /// ```
-  /// use smoke::async::IntoStream;
+  /// use smoke::async::ToStream;
   /// 
-  /// let stream = (0 .. 10).into_stream();
+  /// let stream = (0 .. 10).to_stream();
   /// 
   /// for n in stream.read(0) {
   ///   println!("{}", n);
   /// }
   /// ```  
-  fn into_stream(self: Self) -> Stream<T>;
+  fn to_stream(self: Self) -> Stream<T>;
 }
 
-impl <F: Iterator<Item = T> + Send + 'static, T: Send + 'static> IntoStream<T> for F {
-  fn into_stream(self: Self) -> Stream<T> {
+impl <F: Iterator<Item = T> + Send + 'static, T: Send + 'static> ToStream<T> for F {
+  /// Converts this type to a stream.
+  fn to_stream(self: Self) -> Stream<T> {
     Stream::new(|sender| {
       for n in self {
         try!( sender.send(n) );

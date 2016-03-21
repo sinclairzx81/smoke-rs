@@ -1,4 +1,4 @@
-use smoke::async::{Stream};
+use smoke::async::{Stream, ToStream};
 
 #[test]
 fn create() {
@@ -81,4 +81,12 @@ fn fold() {
   }
   let task = stream().fold(0, |p, c| p + c);
   assert_eq!(3, task.wait().unwrap());
+}
+
+#[test]
+fn to_stream() {
+  let mut idx = 0;
+  for n in (0 .. 10).to_stream().read(0) {
+    assert_eq!(n, idx); idx += 1;
+  }
 }
