@@ -70,7 +70,7 @@ fn main() {
     });
     
     // blocking..
-    println!("{}", task.sync().unwrap());
+    println!("{}", task.wait().unwrap());
 }
 ```
 
@@ -143,7 +143,7 @@ fn main() {
      add(10, 20),
      add(20, 30),
      add(30, 40)
-   ]).sync();
+   ]).wait();
    
    // [30, 50, 70]
    println!("{:?}", result.unwrap()); 

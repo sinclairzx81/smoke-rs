@@ -41,7 +41,6 @@ pub trait ReadAsync {
   /// 
   /// let read = std::io::empty();
   /// 
-  /// // 16k
   /// let task = read.read_to_end_task().async(|result| {
   ///   // bytes available here.
   /// });
@@ -56,7 +55,6 @@ pub trait ReadAsync {
   /// 
   /// let read = std::io::empty();
   /// 
-  /// // 16k
   /// let task = read.read_to_string_task().async(|result| {
   ///   // bytes available here.
   /// });
