@@ -30,6 +30,7 @@ pub mod scheduling;
 
 pub use self::task::Task;
 pub use self::stream::Stream;
+pub use self::stream::IntoStream;
 pub use self::scheduling::WaitHandle;
 pub use self::scheduling::Scheduler;
 pub use self::scheduling::SyncScheduler;

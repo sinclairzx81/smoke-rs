@@ -210,3 +210,30 @@ impl Stream<i32>  {
   }
 }
 
+/// Trait for types that can be made into streams.
+pub trait IntoStream<T> {
+  
+  /// Asynchronously reads all bytes until EOF.
+  ///
+  /// #Example
+  /// ```
+  /// use smoke::async::IntoStream;
+  /// 
+  /// let stream = (0 .. 10).into_stream();
+  /// 
+  /// for n in stream.read(0) {
+  ///   println!("{}", n);
+  /// }
+  /// ```  
+  fn into_stream(self: Self) -> Stream<T>;
+}
+
+impl <F: Iterator<Item = T> + Send + 'static, T: Send + 'static> IntoStream<T> for F {
+  fn into_stream(self: Self) -> Stream<T> {
+    Stream::new(|sender| {
+      for n in self {
+        try!( sender.send(n) );
+      } Ok(())
+    })
+  }
+}

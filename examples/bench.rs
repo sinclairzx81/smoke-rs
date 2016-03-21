@@ -1,17 +1,15 @@
 extern crate smoke;
 
+
 fn main() {
   
-  use smoke::io::ReadAsync;
-  
-  let file = std::fs::File::open("c:/input/video.mp4").unwrap();
-  
-  let buf = file.read_stream(65555)
-                .read(0)
-                .recv()
-                .unwrap();
-  
-  println!("{:?}", buf);
+   use smoke::io::ReadAsync;
+   
+   let read = std::io::empty();
+   
+   let task = read.read_to_end_task().async(|result| {
+     // bytes available here.
+   });
   
   println!("finished");
 }
