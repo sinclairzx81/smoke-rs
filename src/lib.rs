@@ -24,5 +24,8 @@
  THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-/// Provides Task, Stream and Scheduling primitives.
+/// Provides task, stream and scheduling primitives.
 pub mod async;
+
+/// Provides async extensions over std io read and write traits.
+pub mod io;

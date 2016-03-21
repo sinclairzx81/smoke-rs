@@ -4,8 +4,9 @@
     "isShellCommand": true,
     "tasks": [
         {
-            "taskName": "run",
-            "args": ["--example", "bench"],
+            "taskName": "doc",
+            //"taskName": "run",
+            //"args": ["--example", "bench"],
             "isBuildCommand": true,
             "showOutput": "always",
             "problemMatcher": {
