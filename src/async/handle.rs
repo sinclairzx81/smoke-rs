@@ -24,16 +24,43 @@
  THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-pub mod handle;
-pub mod task;
-pub mod stream;
-pub mod scheduling;
+use std::sync::mpsc::{Receiver, RecvError};
 
-pub use self::handle::Handle;
-pub use self::task::Task;
-pub use self::stream::Stream;
-pub use self::stream::ToStream;
-pub use self::scheduling::Scheduler;
-pub use self::scheduling::SyncScheduler;
-pub use self::scheduling::ThreadScheduler;
-pub use self::scheduling::ThreadPoolScheduler;
+/// A waitable handle for scheduled issused by schedulers running tasks.
+///
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::{Scheduler, ThreadScheduler};
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = ThreadScheduler;
+///   let handle    = scheduler.run(hello());
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
+pub struct Handle<T> {
+  receiver: Receiver<T>
+}
+impl<T> Handle<T> where T: Send + 'static {
+  
+  /// Creates a new wait handle. Wait handles are created
+  /// by schedulers when running tasks. When the task is
+  /// being run, a sync_channel is created, the sending
+  /// end is passed to the task, the receiving end is passed
+  /// here.
+  pub fn new(receiver: Receiver<T>) -> Handle<T> {
+    Handle { receiver: receiver }
+  }
+  
+  /// Waits on the handles receiver. This method
+  /// will block the current thread while waiting
+  /// for a result.
+  pub fn wait(self) -> Result<T, RecvError> {
+    self.receiver.recv()
+  }
+}

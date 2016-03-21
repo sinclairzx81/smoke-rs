@@ -29,9 +29,10 @@ use std::sync::mpsc::{
   SendError, 
   RecvError
 };
-
+use super::handle:: {
+  Handle
+};
 use super::scheduling::{
-  WaitHandle,
   Scheduler,
   SyncScheduler,
   ThreadScheduler,
@@ -173,7 +174,7 @@ impl <T> Task<T> where T: Send + 'static {
     /// let handle = add(10, 20).schedule(scheduler);
     /// assert_eq!(handle.wait().unwrap(), 30); 
     /// ```     
-    pub fn schedule<S: Scheduler>(self, scheduler:S) -> WaitHandle<T> {
+    pub fn schedule<S: Scheduler>(self, scheduler:S) -> Handle<T> {
         scheduler.run(self)
     }
     
@@ -193,7 +194,7 @@ impl <T> Task<T> where T: Send + 'static {
     /// });
     /// assert_eq!(handle.wait().unwrap(), 123);
     /// ```     
-    pub fn async<U, F>(self, func: F) -> WaitHandle<U>
+    pub fn async<U, F>(self, func: F) -> Handle<U>
         where U : Send + 'static,
               F : FnOnce(Result<T, RecvError>) -> U + Send + 'static {
         ThreadScheduler.run(Task::new(|sender| {
