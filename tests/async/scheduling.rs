@@ -10,8 +10,8 @@ fn create_ok_task() -> Task<i32> {
 }
 /// creates a task that will panic.
 fn create_panic_task() -> Task<i32> {
-  Task::delay(1).then(|_| Task::new(|_| {
-    panic!("boom");
+  Task::delay(1).map(|_| 1).then(|_| Task::new(|_| {
+    panic!("boom")
   }))
 }
 ///------------------------------------
@@ -31,7 +31,6 @@ fn sync_scheduler_run_ok_task() {
   }
 }
 #[test]
-#[should_panic]
 fn sync_scheduler_run_panic_task() {
   let scheduler = SyncScheduler;
   let task      = create_panic_task();

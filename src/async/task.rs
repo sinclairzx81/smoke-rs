@@ -105,22 +105,30 @@ impl <T> Task<T> where T: Send + 'static {
     /// Creates a new task that runs this task followed by the next.
     /// # Example
     /// ```
-    /// use smoke::async::Task;
     ///
-    /// fn add(a: i32, b: i32) -> Task<i32> {
-    ///   Task::new(move |sender| sender.send(a + b)) 
+    /// use smoke::async::Task;
+    /// fn increment(value: i32) -> Task<i32> {
+    ///  Task::delay(10).map(move |_| value + 1) 
     /// }
     ///
-    /// let task = add(10, 20).then(|result| add(result.unwrap(), 20));
-    /// assert_eq!(task.wait().unwrap(), 50);
+    /// assert_eq!(4, increment(0)
+    ///              .then(increment)
+    ///              .then(increment)
+    ///              .then(increment)
+    ///              .wait()
+    ///              .unwrap());
     /// ```  
-    pub fn then<U, F>(self, func: F) -> Task<U> where 
-        U : Send + 'static,
-        F : FnOnce(Result<T, RecvError>) -> Task<U> + Send + 'static {
+    pub fn then<F>(self, func: F) -> Task<T> where 
+        F : FnOnce(T) -> Task<T> + Send + 'static {
           Task::new(move |sender| {
-            let result_self  = ThreadScheduler.run(self).wait();
-            let result_other = ThreadScheduler.run(func(result_self)).wait();
-            sender.send(result_other.unwrap())
+            let scheduler = ThreadScheduler;
+            match scheduler.run(self).wait() {
+              Err(_)     => {/* no result */},
+              Ok(result) => match scheduler.run(func(result)).wait() {
+                Err(_)     =>  {/* no result */},
+                Ok(result) => try!(sender.send(result))
+              }
+            }; Ok(())
           })
     }
     
