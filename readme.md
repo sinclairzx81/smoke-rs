@@ -215,7 +215,7 @@ a input stream, the caller is returned a sender in which to send values.
 Values sent from the caller are received on the input streams receiver.
 
 ```rust
-use smoke::async::Stream;
+use smoke::async::{Stream, StreamSender};
 
 fn numbers() -> StreamSender<i32> {
   let stream = Stream::input(|receiver| {
