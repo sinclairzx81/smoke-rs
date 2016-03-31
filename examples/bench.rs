@@ -33,7 +33,7 @@ fn main() {
     
     pipe(input(), output()).async(|_| {
       println!("pipe complete");
-    }).wait();
+    }).wait().unwrap();
     
     println!("finished");
     

@@ -24,17 +24,19 @@
  THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-pub mod handle;
 pub mod task;
 pub mod stream;
 pub mod scheduling;
 
-pub use self::handle::Handle;
-pub use self::task::Task;
-pub use self::stream::Stream;
-pub use self::stream::StreamSender;
-pub use self::stream::ToStream;
+pub use self::scheduling::TaskHandle;
 pub use self::scheduling::Scheduler;
 pub use self::scheduling::SyncScheduler;
 pub use self::scheduling::ThreadScheduler;
 pub use self::scheduling::ThreadPoolScheduler;
+
+pub use self::task::Task;
+
+pub use self::stream::Stream;
+pub use self::stream::StreamSender;
+pub use self::stream::StreamReceiver;
+pub use self::stream::ToStream;

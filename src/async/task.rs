@@ -29,10 +29,9 @@ use std::sync::mpsc::{
   SendError, 
   RecvError
 };
-use super::handle:: {
-  Handle
-};
+
 use super::scheduling::{
+  TaskHandle,
   Scheduler,
   SyncScheduler,
   ThreadScheduler,
@@ -55,13 +54,11 @@ impl<T> TaskSender<T>  {
 }
 
 /// Specialized boxed FnOnce() closure type for tasks.
-pub trait TaskFunc<T> {
-    type Output;
-    fn call(self: Box<Self>, value:T) -> Self::Output;
+pub trait TaskFunc<T, TResult> {
+    fn call(self: Box<Self>, value:T) -> TResult;
 }
-impl<R, T, F: FnOnce(T) -> R> TaskFunc<T> for F {
-    type Output = R;
-    fn call(self: Box<Self>, value: T) -> R {
+impl<T, TResult, F> TaskFunc<T, TResult> for F where F: FnOnce(T) -> TResult {
+    fn call(self: Box<Self>, value: T) -> TResult {
         self(value)
     }
 }
@@ -69,7 +66,7 @@ impl<R, T, F: FnOnce(T) -> R> TaskFunc<T> for F {
 /// Encapsulates an asynchronous operation. Tasks can be run either synchronously or asynchronously.
 pub struct Task<T> {
     /// The closure to resolve this task.
-    pub func: Box<TaskFunc<TaskSender<T>, Output = Result<(), SendError<T>>> + Send + 'static>
+    pub func: Box<TaskFunc<TaskSender<T>, Result<(), SendError<T>>> + Send + 'static>
 }
 impl <T> Task<T> where T: Send + 'static {
     /// Creates a new task.
@@ -182,7 +179,7 @@ impl <T> Task<T> where T: Send + 'static {
     /// let handle = add(10, 20).schedule(scheduler);
     /// assert_eq!(handle.wait().unwrap(), 30); 
     /// ```     
-    pub fn schedule<S: Scheduler>(self, scheduler:S) -> Handle<T> {
+    pub fn schedule<S: Scheduler>(self, scheduler:S) -> TaskHandle<T> {
         scheduler.run(self)
     }
     
@@ -202,7 +199,7 @@ impl <T> Task<T> where T: Send + 'static {
     /// });
     /// assert_eq!(handle.wait().unwrap(), 123);
     /// ```     
-    pub fn async<U, F>(self, func: F) -> Handle<U>
+    pub fn async<U, F>(self, func: F) -> TaskHandle<U>
         where U : Send + 'static,
               F : FnOnce(Result<T, RecvError>) -> U + Send + 'static {
         ThreadScheduler.run(Task::new(|sender| {

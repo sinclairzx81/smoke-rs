@@ -27,17 +27,62 @@
 extern crate threadpool;
 
 use self::threadpool::ThreadPool;
-use std::sync::mpsc::sync_channel;
 use std::thread;
-use super::handle::Handle;
-use super::task::Task;
-use super::task::TaskSender;
+use std::sync::mpsc::{
+  sync_channel,
+  Receiver,
+  RecvError
+};
+use super::task::{
+  Task,
+  TaskSender
+};
+
+
+/// A waitable handle for scheduled issused by schedulers running tasks.
+///
+/// # Examples
+/// ```
+/// use smoke::async::Task;
+/// use smoke::async::{Scheduler, ThreadScheduler};
+/// fn hello() -> Task<&'static str> {
+///   Task::delay(1).map(|_| "hello")
+/// }
+///
+/// fn main() {
+///   let scheduler = ThreadScheduler;
+///   let handle    = scheduler.run(hello());
+///   // sometime later...
+///   println!("{:?}", handle.wait());
+/// }
+/// ```
+pub struct TaskHandle<T> {
+  receiver: Receiver<T>
+}
+impl<T> TaskHandle<T> where T: Send + 'static {
+  
+  /// Creates a new wait handle. Wait handles are created
+  /// by schedulers when running tasks. When the task is
+  /// being run, a sync_channel is created, the sending
+  /// end is passed to the task, the receiving end is passed
+  /// here.
+  pub fn new(receiver: Receiver<T>) -> TaskHandle<T> {
+    TaskHandle { receiver: receiver }
+  }
+  
+  /// Waits on the handles receiver. This method
+  /// will block the current thread while waiting
+  /// for a result.
+  pub fn wait(self) -> Result<T, RecvError> {
+    self.receiver.recv()
+  }
+}
 
 /// Common scheduler trait implemented by all schedulers.
 pub trait Scheduler {
   
   /// Schedules a task.
-  fn run<T>(&self, task: Task<T>) -> Handle<T> where T: Send + 'static;
+  fn run<T>(&self, task: Task<T>) -> TaskHandle<T> where T: Send + 'static;
 }
 
 /// A synchronous scheduler. Tasks scheduled on this scheduler
@@ -62,9 +107,9 @@ pub trait Scheduler {
 /// ```
 pub struct SyncScheduler;
 impl Scheduler for SyncScheduler {
-  fn run<T>(&self, task: Task<T>) -> Handle<T> where T: Send + 'static {
+  fn run<T>(&self, task: Task<T>) -> TaskHandle<T> where T: Send + 'static {
     let (sender, receiver) = sync_channel(1);
-    let handle = Handle::new(receiver);
+    let handle = TaskHandle::new(receiver);
     match task.func.call(TaskSender::new(sender)) {
       Err(error) => panic!(format!("Scheduler: Error processing task: {}", error)),
       Ok (_)     => { /* ... */ }
@@ -103,9 +148,9 @@ impl ThreadScheduler {
 }
 impl Scheduler for ThreadScheduler {
   /// Schedules a task.
-  fn run<T>(&self, task: Task<T>) -> Handle<T> where T: Send + 'static {
+  fn run<T>(&self, task: Task<T>) -> TaskHandle<T> where T: Send + 'static {
     let (sender, receiver) = sync_channel(1);
-    let handle = Handle::new(receiver);
+    let handle = TaskHandle::new(receiver);
     thread::spawn(move || {
       match task.func.call(TaskSender::new(sender)) {
         Err(error) => panic!(format!("Scheduler: Error processing task: {}", error)),
@@ -148,9 +193,9 @@ impl ThreadPoolScheduler {
   }
 }
 impl Scheduler for ThreadPoolScheduler {
-  fn run<T>(&self, task: Task<T>) -> Handle<T> where T: Send + 'static {
+  fn run<T>(&self, task: Task<T>) -> TaskHandle<T> where T: Send + 'static {
     let (sender, receiver) = sync_channel(1);
-    let handle = Handle::new(receiver);
+    let handle = TaskHandle::new(receiver);
     self.threadpool.execute(move || {
       match task.func.call(TaskSender::new(sender)) {
         Err(error) => panic!(format!("Scheduler: Error processing task: {}", error)),

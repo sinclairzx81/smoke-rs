@@ -48,6 +48,9 @@ impl<T, TResult, F> Func<T, TResult> for F where F: FnOnce(T) -> TResult {
 /// Wraps a mpsc SyncSender<T>
 pub type StreamSender<T> = SyncSender<T>;
 
+/// Wraps a mpsc Receiver<T>
+pub type StreamReceiver<T> = Receiver<T>;
+
 /// Provides functionality to generate asynchronous sequences.
 pub struct Stream<T>  {
   /// The closure used to emit elements on this stream.
@@ -93,9 +96,9 @@ impl<T> Stream<T> where T: Send + 'static {
   ///   })
   /// }
   /// ```
-  pub fn input<F>(func:F) -> SyncSender<T>  where
-      F: FnOnce(Receiver<T>) -> Result<(), RecvError> + Send + 'static {
-      let (tx, rx) = sync_channel(0);
+  pub fn input<F>(func:F) -> StreamSender<T>  
+      where F: FnOnce(Receiver<T>) -> Result<(), RecvError> + Send + 'static {
+      let (tx, rx) = sync_channel(1);
       let _ = thread::spawn(move || func(rx));
       tx
   }
@@ -109,8 +112,8 @@ impl<T> Stream<T> where T: Send + 'static {
   /// for n in Stream::range(0, 4).read() {
   ///     // 0, 1, 2, 3
   /// } 
-  pub fn read(self) -> Receiver<T> {
-      let (tx, rx) = sync_channel(0);
+  pub fn read(self) -> StreamReceiver<T> {
+      let (tx, rx) = sync_channel(1);
       let _ = thread::spawn(move || self.func.call(tx));
       rx
   }
@@ -124,7 +127,7 @@ impl<T> Stream<T> where T: Send + 'static {
   /// for n in Stream::range(0, 4).read() {
   ///     // 0, 1, 2, 3
   /// } 
-  pub fn read_bounded(self, bound: usize) -> Receiver<T> {
+  pub fn read_bounded(self, bound: usize) -> StreamReceiver<T> {
       let (tx, rx) = sync_channel(bound);
       let _ = thread::spawn(move || self.func.call(tx));
       rx
@@ -181,8 +184,8 @@ impl<T> Stream<T> where T: Send + 'static {
   ///     // only even numbers
   /// }
   /// ```
-  pub fn filter<F>(self, func:F) -> Stream<T> where 
-      F: Fn(&T) -> bool + Send + 'static {
+  pub fn filter<F>(self, func:F) -> Stream<T> 
+      where F: Fn(&T) -> bool + Send + 'static {
       Stream::output(move |sender|
         self.read().into_iter()
                    .filter(|n| func(n))
@@ -203,9 +206,9 @@ impl<T> Stream<T> where T: Send + 'static {
   ///     // strings
   /// }
   /// ```    
-  pub fn map<F, U>(self, func:F) -> Stream<U> where 
-    U: Send + 'static,
-    F: Fn(T) -> U + Send + 'static {
+  pub fn map<F, U>(self, func:F) -> Stream<U>
+     where U: Send + 'static,
+           F: Fn(T) -> U + Send + 'static {
       Stream::output(move |sender| 
         self.read().into_iter()
                    .map(|n| sender.send(func(n)))
@@ -224,8 +227,8 @@ impl<T> Stream<T> where T: Send + 'static {
   /// let task     = numbers.fold(0, |p, c| p + c);
   /// let result   = task.wait().unwrap();
   /// ```  
-  pub fn fold<F>(self, init: T, func:F) -> Task<T> where 
-    F: FnMut(T, T) -> T + Send + 'static {
+  pub fn fold<F>(self, init: T, func:F) -> Task<T> 
+    where F: FnMut(T, T) -> T + Send + 'static {
       Task::new(move |sender|  sender.send(self.read()
                                      .into_iter()
                                      .fold(init, func)))

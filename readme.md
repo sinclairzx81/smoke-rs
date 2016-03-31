@@ -26,11 +26,10 @@ ease of use of Tasks.
   * [Run Parallel](#run_parallel)
   * [Scheduling](#scheduling)
 * [Stream&lt;T&gt;](#stream)
-  * [Create Stream](#creating_streams)
-  * [Reading](#reading_streams)
+  * [Output Streams](#output_streams)
+  * [Input Streams](#input_streams)
   * [Merging](#merging_streams)
   * [Operators](#stream_operators)
-  * [Cancel](#stream_cancel)
 
 <a name='task'></a>
 ## Task&lt;T&gt;
@@ -178,62 +177,67 @@ fn main() {
 <a name='stream'></a>
 ## Stream&lt;T&gt;
 
-Stream&lt;T&gt; provides a means to generate async sequences.
+Stream&lt;T&gt; provides a simple abstraction to read and write streams of values asynchronously. 
+Internally, Stream&lt;T&gt; is built over Rust mpsc channels, and manages the threading internals.
 
-<a name='creating_streams'></a>
-### Create Stream
+<a name='output_streams'></a>
+### Output Streams
 
-The following creates a stream of numbers. 
+The following creates a function that creates a output stream of integer values. 
+The main() function iterates values on the stream by calling .read(). Output 
+streams are streams intended to be read externally to the stream.
 
 ```rust
 use smoke::async::Stream;
 
+fn numbers() -> Stream<i32> {
+  let stream = Stream::output(|sender| {
+      sender.send(1).unwrap();
+      sender.send(2).unwrap();
+      sender.send(3).unwrap();
+      sender.send(4) // return mpsc 
+  });  
+}
+
 fn main() {
-  // a stream of numbers, 1 - 4.
-  let stream = Stream::new(|sender| {
-      try! ( sender.send(1) );
-      try! ( sender.send(2) );
-      try! ( sender.send(3) );
-      sender.send(4)
-  });
+  let stream = numbers();
+  for n in stream.read() {
+    // n = 1, 2, 3, 4
+  }
 }
 ```
 
-<a name='reading_streams'></a>
-### Reading Streams
+<a name='input_streams'></a>
+### Input Streams
 
-Use the .read(n) function to begin reading from a stream. The
-read function will internally spawn a new thread for the body
-of the stream closure and return to the caller a mpsc Receiver.
-
-The .read(n) function takes a bound. The bound correlates to a
-mpsc sync_channel bound. Setting a bound of 0 will cause the
-sending thread to block on each iteration, setting a higher
-bound allows for asynchronous buffering.
+Input streams are the direct inverse of a output stream. When creating
+a input stream, the caller is returned a sender in which to send values. 
+Values sent from the caller are received on the input streams receiver.
 
 ```rust
 use smoke::async::Stream;
 
-fn main() {
-  // a stream of numbers, 1 - 4.
-  let stream = Stream::new(|sender| {
-      try! ( sender.send(1) );
-      try! ( sender.send(2) );
-      try! ( sender.send(3) );
-      sender.send(4)
-  }); 
-  
-  for n in stream.read(0) {
-      println!("got: {}", n);
-  }
+fn numbers() -> StreamSender<i32> {
+  let stream = Stream::input(|receiver| {
+    for n in receiver {
+      // n = 1, 2, 3, 4
+    }
+  });  
 }
 
+fn main() {
+  let sender = numbers();
+  sender.send(1).unwrap();
+  sender.send(2).unwrap();
+  sender.send(3).unwrap();
+  sender.send(4).unwrap();
+}
 ```
 
 <a name='merging_streams'></a>
 ### Merging Streams
 
-Multiple streams of the same type can be merged into a single stream with the .merge() function.
+Output streams of the same type can be merged into a single stream with the .merge() function.
 
 ```rust
 use smoke::async::Stream;
@@ -245,7 +249,7 @@ enum Item {
 }
 
 fn numbers() -> Stream<Item> {
-  Stream::new(|sender| {
+  Stream::output(|sender| {
     try! (sender.send(Item::Number(1)) );
     try! (sender.send(Item::Number(2)) );
     try! (sender.send(Item::Number(3)) );
@@ -255,7 +259,7 @@ fn numbers() -> Stream<Item> {
 }
 
 fn words() -> Stream<Item> {
-  Stream::new(|sender| {
+  Stream::output(|sender| {
       "the quick brown fox jumps over the lazy dog"
         .split(" ")
         .map(|n| sender.send(Item::Word(n)))
@@ -267,7 +271,7 @@ fn words() -> Stream<Item> {
 fn main() {
   let streams = vec![numbers(), words()];
   let merged  = Stream::merge(streams);
-  for item in stream.read(0) {
+  for item in stream.read() {
     match item {
       Item::Word(word)     => println!("word: {:?}", word),
       Item::Number(number) => println!("number: {:?}", number)
@@ -286,7 +290,7 @@ are deferred, and executed only when the stream is read().
 use smoke::async::Stream;
 
 fn numbers() -> Stream<i32> {
-  Stream::new(|sender| {
+  Stream::output(|sender| {
     try! (sender.send(1) );
     try! (sender.send(2) );
     try! (sender.send(3) );
@@ -319,57 +323,5 @@ fn main() {
                     format!("{} {} and", p, c))
              .wait()
              .unwrap());
-}
-```
-<a name="stream_cancel"></a>
-### Cancel
-
-Sometimes, it might be useful to create infinite sequences. With sequences
-of this sort, its useful to be able to cancel them. Smoke supports stream 
-cancellation by way of rusts ownership semantics, and is closely tied to 
-mpsc channels. 
-
-In the example below, there is a stream that creates an infinite loop.
-Internally smoke will run this on a separate thread. The caller in main()
-attempts to read from this stream and immediately breaks out on the first
-iteration. Because the receiver is no longer owned, this causes the sender to Err()
-on the next loop.
- 
-Smoke borrows on this behavior for stream cancellation.
-
-```rust
-use smoke::async::Stream;
-
-fn runtime() -> Stream<()> {
-  Stream::new(move |sender| {
-    loop {
-      // here, this loop will continue to 
-      // send as long as the receiver is 
-      // owned. If the receiver drops, then
-      // the call to send() will result in 
-      // Err(). In case of either Ok() or
-      // Err(), the calling thread will 
-      // exit this closure and terminate
-      // gracefully.
-      try!(sender.send(()));
-    }
-  })
-}
-
-fn main() {
-  
-  // calling read() returns a mpsc
-  // receiver which is becomes owned 
-  // by the for loop.
-  for _ in runtime().read(0) {
-    println!("got one");
-    break; // no more please...
-  } 
-  
-  // here, the receiver is no longer,
-  // owned, and the sending thread
-  // exits gracefully.
-  
-  println!("finished");
 }
 ```
