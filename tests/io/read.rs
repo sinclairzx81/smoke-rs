@@ -5,12 +5,12 @@ use std::io::empty;
 fn to_stream() {
   let read = empty();
   let stream = read.to_stream(16384);
-  for _ in stream.read(0) {}
+  for _ in stream.read() {}
 }
 
 #[test]
 fn to_line_stream() {
   let read = empty();
   let stream = read.to_line_stream();
-  for _ in stream.read(0) {}
+  for _ in stream.read() {}
 }

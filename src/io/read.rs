@@ -40,7 +40,7 @@ pub trait Read : StdRead {
   /// let read = std::io::empty();
   /// 
   /// // to stream with 16k chunks.
-  /// for bytes in read.to_stream(16384).read(0) {
+  /// for bytes in read.to_stream(16384).read() {
   ///   println!("{}", bytes.len());
   /// }
   /// ```
@@ -54,7 +54,7 @@ pub trait Read : StdRead {
   /// 
   /// let read = std::io::empty();
   /// 
-  /// for line in read.to_line_stream().read(0) {
+  /// for line in read.to_line_stream().read() {
   ///   println!("{}", line);
   /// }
   /// ```
@@ -66,7 +66,7 @@ impl<R: StdRead + Send + 'static> Read for R {
   /// Stream bytes until EOF.
   fn to_stream(self: Self, bufsize: usize) -> Stream<Vec<u8>> {
       let reader = Mutex::new(self);
-      Stream::new(move |sender| {
+      Stream::output(move |sender| {
         let mut reader = reader.lock().unwrap();
         let mut buf    = vec![0; bufsize];
         loop {
@@ -83,7 +83,7 @@ impl<R: StdRead + Send + 'static> Read for R {
   /// Stream lines until EOF.
   fn to_line_stream(self: Self) -> Stream<String> {
       let reader = Mutex::new(Some(self));
-      Stream::new(move |sender| {
+      Stream::output(move |sender| {
         let mut reader = reader.lock().unwrap();
         let reader     = reader.take();
         let mut reader = BufReader::new(reader.unwrap());

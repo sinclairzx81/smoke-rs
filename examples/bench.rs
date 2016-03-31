@@ -1,25 +1,40 @@
 extern crate smoke;
 
-#[allow(unused_imports)]
+use smoke::async::Stream;
+use smoke::async::StreamSender;
 use smoke::async::Task;
 
+fn input() -> Stream<i32> {
+  Stream::output(|sender| {
+    (0..10).map(|n| sender.send(n)).last();
+    Ok(())
+  })
+}
+
+fn output() -> StreamSender<i32> {
+  Stream::input(|receiver| {
+    for n in receiver {
+      println!("{}", n);
+    } Ok(())
+  })
+}
+
+fn pipe(input: Stream<i32>, output: StreamSender<i32>) -> Task<()> {
+  Task::new(move |sender| {
+    input.read()
+         .into_iter()
+         .map(|n| output.send(n))
+         .last();
+    sender.send(())
+  })
+}
+
 fn main() {
-  
-  fn increment(value: i32) -> Task<i32> {
-    Task::delay(10).map(move |_| value + 1) 
-  }
-  
-  fn boom(value: i32) -> Task<i32> {
-    Task::new(|sender| {
-      panic!("boom")
-    })
-  }
-  
-  println!("{:?}", increment(0)
-                .then(increment)
-                .then(increment)
-                .then(increment)
-                .wait());
-                
-   println!("finished ok");
+    
+    pipe(input(), output()).async(|_| {
+      println!("pipe complete");
+    }).wait();
+    
+    println!("finished");
+    
 }
