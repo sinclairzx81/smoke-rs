@@ -97,7 +97,7 @@ impl<T> Stream<T> where T: Send + 'static {
   /// }
   /// ```
   pub fn input<F>(func:F) -> StreamSender<T>  
-      where F: FnOnce(Receiver<T>) -> Result<(), RecvError> + Send + 'static {
+      where F: FnOnce(Receiver<T>) + Send + 'static {
       let (tx, rx) = sync_channel(1);
       let _ = thread::spawn(move || func(rx));
       tx
